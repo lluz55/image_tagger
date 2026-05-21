@@ -1,0 +1,12 @@
+# Local CLI metadata
+.antigravitycli/
+
+# System / IDE folders
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

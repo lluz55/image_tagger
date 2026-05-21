@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Image Tagger</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <h1>Image Tagger</h1>
+
+  <!-- ── Tela 1 ── -->
+  <div id="screen-capture" class="screen">
+
+    <input id="name-input" class="field" type="text"
+           placeholder="Nome para a tag..." autocomplete="off" spellcheck="false">
+    
+    <!-- Modo Incrementador Control -->
+    <div class="incrementer-wrap">
+      <label class="checkbox-container">
+        <input type="checkbox" id="increment-mode-checkbox" onchange="toggleIncrementMode()">
+        <span class="checkmark"></span>
+        Modo Incrementador (substitui <code style="color:#66bb6a">{}</code>)
+      </label>
+      <div id="counter-control-group" class="counter-control-group" style="display: none;">
+        <span>Próximo:</span>
+        <button class="btn-counter-adjust" onclick="adjustCounter(-1)">-</button>
+        <input type="number" id="counter-value-input" value="1" min="1" onchange="setCounterValue(this.value)">
+        <button class="btn-counter-adjust" onclick="adjustCounter(1)">+</button>
+      </div>
+    </div>
+
+    <div id="prefix-hint"></div>
+
+    <button class="btn btn-primary" onclick="triggerCapture()">
+      <span>📷</span> Tirar Foto
+    </button>
+    <button class="btn btn-secondary" onclick="triggerGallery()">
+      <span>🖼️</span> Escolher da Galeria
+    </button>
+
+    <!-- Prefixo -->
+    <div class="section">
+      <div class="section-title">Prefixo</div>
+      <div id="prefix-chips" class="chips-wrap"></div>
+      <div class="add-row" style="margin-top:10px">
+        <input id="prefix-input" class="field" type="text"
+               placeholder="Novo prefixo..." autocomplete="off" spellcheck="false">
+        <button class="btn-add" onclick="addPrefix('prefix-input')" title="Adicionar prefixo">+</button>
+      </div>
+    </div>
+
+    <!-- Tags -->
+    <div class="section">
+      <div class="section-title">Tags</div>
+      <div id="tag-chips" class="chips-wrap"></div>
+      <div class="add-row" style="margin-top:10px">
+        <input id="tag-input" class="field" type="text"
+               placeholder="Nova tag..." autocomplete="off" spellcheck="false">
+        <button class="btn-add" onclick="addTag('tag-input')" title="Adicionar tag">+</button>
+      </div>
+    </div>
+
+    <!-- Recentes -->
+    <div id="history-section" class="section" style="display:none">
+      <div class="section-title">Recentes</div>
+      <div id="history-list"></div>
+    </div>
+
+  </div>
+
+  <!-- ── Tela 2 ── -->
+  <div id="screen-preview" class="screen">
+    <canvas id="canvas"></canvas>
+    
+    <div class="section">
+      <span class="rename-label">Nome da tag</span>
+      <input id="tag-rename" class="field" type="text" style="margin-top:8px"
+             autocomplete="off" spellcheck="false" placeholder="Nome da tag...">
+      <div id="prefix-hint-2" style="font-size: 0.78rem; color: #4caf50; padding: 6px 4px 0; min-height: 1.2em;"></div>
+    </div>
+
+    <!-- Prefixo (Screen 2) -->
+    <div class="section">
+      <div class="section-title">Prefixo</div>
+      <div id="prefix-chips-2" class="chips-wrap"></div>
+      <div class="add-row" style="margin-top:10px">
+        <input id="prefix-input-2" class="field" type="text"
+               placeholder="Novo prefixo..." autocomplete="off" spellcheck="false">
+        <button class="btn-add" onclick="addPrefix('prefix-input-2')" title="Adicionar prefixo">+</button>
+      </div>
+    </div>
+
+    <!-- Tags (Screen 2) -->
+    <div class="section">
+      <div class="section-title">Tags</div>
+      <div id="tag-chips-2" class="chips-wrap"></div>
+      <div class="add-row" style="margin-top:10px">
+        <input id="tag-input-2" class="field" type="text"
+               placeholder="Nova tag..." autocomplete="off" spellcheck="false">
+        <button class="btn-add" onclick="addTag('tag-input-2')" title="Adicionar tag">+</button>
+      </div>
+    </div>
+
+    <div class="fab-container">
+      <button class="fab fab-discard" onclick="newPhoto()" title="Descartar e Voltar">
+        <span class="fab-label">Descartar</span>
+        <svg class="fab-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+      <button class="fab fab-save" onclick="saveImage()" title="Salvar no dispositivo">
+        <span class="fab-label">Salvar</span>
+        <svg class="fab-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="toast">Imagem salva com sucesso!</div>
+
+  <!-- Inputs ocultos -->
+  <input type="file" id="input-cam"     accept="image/*" capture="environment">
+  <input type="file" id="input-gallery" accept="image/*">
+
+  <script src="app.js" defer></script>
+</body>
+</html>

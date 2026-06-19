@@ -132,9 +132,22 @@ export async function loadAiModel() {
 
     const originalFetch = window.fetch;
     try {
+      // 1. Detectar suporte shader-f16 no WebGPU
+      const hasFp16 = await (async () => {
+        try {
+          if (!navigator.gpu) return false;
+          const adapter = await navigator.gpu.requestAdapter();
+          return !!adapter?.features.has('shader-f16');
+        } catch (e) {
+          return false;
+        }
+      })();
+      console.log(`[WebGPU] Suporte a shader-f16: ${hasFp16}`);
+
+      // 2. Interceptador de fetch para contornar bug de exportação do onnx_data do FP16
       window.fetch = function(input, init) {
         let url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input && input.url));
-        if (url && url.endsWith('embed_tokens.onnx_data')) {
+        if (hasFp16 && url && url.endsWith('embed_tokens.onnx_data')) {
           const newUrl = url.replace('embed_tokens.onnx_data', 'embed_tokens_fp16.onnx_data');
           console.log(`[Fetch Redirect] ${url} -> ${newUrl}`);
           return originalFetch(newUrl, init);
@@ -144,30 +157,64 @@ export async function loadAiModel() {
 
       const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0');
       const { AutoModelForImageTextToText, AutoProcessor } = module;
-      
-      const [model, processor] = await Promise.all([
-        AutoModelForImageTextToText.from_pretrained('LiquidAI/LFM2.5-VL-450M-ONNX', {
-          device: 'webgpu',
-          dtype: {
-            vision_encoder: 'fp16',
-            embed_tokens: 'fp16',
-            decoder_model_merged: 'q4',
-          },
-          progress_callback: (data) => {
-            if (data.status === 'progress') {
-              const percent = Math.round(data.progress);
-              progressBar.style.width = `${percent}%`;
-              percentText.textContent = `${percent}%`;
-              const filename = data.file.substring(data.file.lastIndexOf('/') + 1);
-              statusText.innerHTML = `Baixando: ${filename} <span>${percent}%</span>`;
-            } else if (data.status === 'ready') {
-              statusText.innerHTML = `Carregado: ${data.file} <span>100%</span>`;
-            }
-          }
-        }),
-        AutoProcessor.from_pretrained('LiquidAI/LFM2.5-VL-450M-ONNX')
-      ]);
-      
+
+      const handleProgress = (data) => {
+        if (data.status === 'progress') {
+          const percent = Math.round(data.progress);
+          progressBar.style.width = `${percent}%`;
+          percentText.textContent = `${percent}%`;
+          const filename = data.file.substring(data.file.lastIndexOf('/') + 1);
+          statusText.innerHTML = `Baixando: ${filename} <span>${percent}%</span>`;
+        } else if (data.status === 'ready') {
+          statusText.innerHTML = `Carregado: ${data.file} <span>100%</span>`;
+        }
+      };
+
+      let model = null;
+      let processor = null;
+
+      try {
+        const dtypeConfig = hasFp16 ? {
+          vision_encoder: 'fp16',
+          embed_tokens: 'fp16',
+          decoder_model_merged: 'q4',
+        } : {
+          vision_encoder: 'fp32',
+          embed_tokens: 'fp32',
+          decoder_model_merged: 'q4',
+        };
+
+        console.log(`[AI Model] Carregando com WebGPU (dtype: ${dtypeConfig.vision_encoder})...`);
+        const result = await Promise.all([
+          AutoModelForImageTextToText.from_pretrained('LiquidAI/LFM2.5-VL-450M-ONNX', {
+            device: 'webgpu',
+            dtype: dtypeConfig,
+            progress_callback: handleProgress
+          }),
+          AutoProcessor.from_pretrained('LiquidAI/LFM2.5-VL-450M-ONNX')
+        ]);
+        model = result[0];
+        processor = result[1];
+      } catch (webGpuErr) {
+        console.warn("[AI Model] Falha no WebGPU, tentando fallback para WASM...", webGpuErr);
+        statusText.innerHTML = 'WebGPU indisponível. Iniciando em modo de compatibilidade (WASM)... <span>0%</span>';
+        
+        const result = await Promise.all([
+          AutoModelForImageTextToText.from_pretrained('LiquidAI/LFM2.5-VL-450M-ONNX', {
+            device: 'wasm',
+            dtype: {
+              vision_encoder: 'fp32',
+              embed_tokens: 'fp32',
+              decoder_model_merged: 'q4',
+            },
+            progress_callback: handleProgress
+          }),
+          AutoProcessor.from_pretrained('LiquidAI/LFM2.5-VL-450M-ONNX')
+        ]);
+        model = result[0];
+        processor = result[1];
+      }
+
       aiModel = model;
       aiProcessor = processor;
       
@@ -176,7 +223,7 @@ export async function loadAiModel() {
       progressBar.style.width = '100%';
       percentText.textContent = '100%';
       title.textContent = '🤖 LiquidAI Pronto!';
-      statusText.textContent = 'Modelo salvo localmente e pronto para uso.';
+      statusText.textContent = 'Modelo pronto para uso.';
       warningText.style.display = 'none';
       
       setTimeout(() => {

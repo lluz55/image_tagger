@@ -4,7 +4,8 @@ import { canvas, tagRename, showToast, state } from './state.js';
 const AI_MODE_KEY = 'img_tagger_ai_mode';
 const AI_MODEL_KEY = 'img_tagger_ai_model';
 
-let aiPipeline = null; // Para ONNX/Transformers.js (LiquidAI)
+let aiModel = null;
+let aiProcessor = null;
 let ggufInstance = null; // Para GGUF (PaddleOCR)
 export let isAiModelReady = false;
 export let isDownloading = false;
@@ -57,7 +58,8 @@ export function changeAiModel() {
   
   // Reseta estados do modelo anterior
   isAiModelReady = false;
-  aiPipeline = null;
+  aiModel = null;
+  aiProcessor = null;
   ggufInstance = null;
   
   showToast(`Modelo alterado para ${val === 'liquid' ? 'LiquidAI' : 'PaddleOCR'}. Iniciando carregamento...`);
@@ -130,22 +132,33 @@ export async function loadAiModel() {
 
     try {
       const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0');
-      const { pipeline } = module;
+      const { AutoModelForImageTextToText, AutoProcessor } = module;
       
-      aiPipeline = await pipeline('document-question-answering', 'LiquidAI/LFM2.5-VL-450M-ONNX', {
-        device: 'webgpu',
-        progress_callback: (data) => {
-          if (data.status === 'progress') {
-            const percent = Math.round(data.progress);
-            progressBar.style.width = `${percent}%`;
-            percentText.textContent = `${percent}%`;
-            const filename = data.file.substring(data.file.lastIndexOf('/') + 1);
-            statusText.innerHTML = `Baixando: ${filename} <span>${percent}%</span>`;
-          } else if (data.status === 'ready') {
-            statusText.innerHTML = `Carregado: ${data.file} <span>100%</span>`;
+      const [model, processor] = await Promise.all([
+        AutoModelForImageTextToText.from_pretrained('LiquidAI/LFM2.5-VL-450M-ONNX', {
+          device: 'webgpu',
+          dtype: {
+            vision_encoder: 'fp16',
+            embed_tokens: 'fp16',
+            decoder_model_merged: 'q4',
+          },
+          progress_callback: (data) => {
+            if (data.status === 'progress') {
+              const percent = Math.round(data.progress);
+              progressBar.style.width = `${percent}%`;
+              percentText.textContent = `${percent}%`;
+              const filename = data.file.substring(data.file.lastIndexOf('/') + 1);
+              statusText.innerHTML = `Baixando: ${filename} <span>${percent}%</span>`;
+            } else if (data.status === 'ready') {
+              statusText.innerHTML = `Carregado: ${data.file} <span>100%</span>`;
+            }
           }
-        }
-      });
+        }),
+        AutoProcessor.from_pretrained('LiquidAI/LFM2.5-VL-450M-ONNX')
+      ]);
+      
+      aiModel = model;
+      aiProcessor = processor;
       
       isAiModelReady = true;
       isDownloading = false;
@@ -237,10 +250,32 @@ export async function runAiAutoTag() {
     
     let ans = '';
     
-    if (modelChoice === 'liquid' && aiPipeline) {
-      const result = await aiPipeline(dataUrl, prompt);
-      if (result && result[0] && result[0].answer) {
-        ans = result[0].answer.trim();
+    if (modelChoice === 'liquid' && aiModel && aiProcessor) {
+      const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0');
+      const { RawImage } = module;
+      
+      const image = await RawImage.read(dataUrl);
+      const conversation = [
+        {
+          role: "user",
+          content: [
+            { type: "image" },
+            { type: "text", text: prompt },
+          ],
+        },
+      ];
+      
+      const text = aiProcessor.apply_chat_template(conversation, { add_generation_prompt: true });
+      const inputs = await aiProcessor(text, image);
+      const outputs = await aiModel.generate({ ...inputs, max_new_tokens: 128 });
+      
+      const decoded = aiProcessor.batch_decode(
+        outputs.slice(null, [inputs.input_ids.dims.at(-1), null]),
+        { skip_special_tokens: true }
+      );
+      
+      if (decoded && decoded[0]) {
+        ans = decoded[0].trim();
       }
     } else {
       // Se por algum motivo o modelo não estiver inicializado

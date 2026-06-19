@@ -1034,35 +1034,22 @@ async function loadAiModel() {
     }, 3000);
     
   } catch (err) {
-    console.warn('Erro ao carregar a IA real (iniciando simulação local):', err);
+    console.error('Erro crítico ao carregar o modelo de IA:', err);
+    isAiModelReady = false;
+    isDownloading = false;
     
-    let progress = 0;
-    const interval = setInterval(() => {
-      if (!readAiMode()) {
-        clearInterval(interval);
-        isDownloading = false;
-        panel.classList.remove('show');
-        return;
-      }
-      
-      progress += 5;
-      progressBar.style.width = `${progress}%`;
-      percentText.textContent = `${progress}%`;
-      statusText.innerHTML = `Baixando modelo (Simulado) <span>${progress}%</span>`;
-      
-      if (progress >= 100) {
-        clearInterval(interval);
-        isAiModelReady = true;
-        isDownloading = false;
-        title.textContent = '🤖 IA Pronta e Offline!';
-        statusText.textContent = 'Modelo simulado carregado com sucesso.';
-        warningText.style.display = 'none';
-        
-        setTimeout(() => {
-          panel.classList.remove('show');
-        }, 3000);
-      }
-    }, 150);
+    // Atualiza o painel visual com o erro
+    title.textContent = '❌ Falha ao Carregar IA';
+    statusText.textContent = 'Verifique sua conexão e suporte a WebGPU.';
+    warningText.style.display = 'none';
+    progressBar.style.background = '#c62828';
+    
+    showToast('Falha ao carregar a IA. Verifique sua conexão e suporte a WebGPU.');
+    
+    // Oculta o painel de download após 6 segundos
+    setTimeout(() => {
+      panel.classList.remove('show');
+    }, 6000);
   }
 }
 
@@ -1091,8 +1078,10 @@ async function runAiAutoTag() {
         ans = result[0].answer.trim();
       }
     } else {
-      const randomId = Math.floor(100000 + Math.random() * 900000);
-      ans = `Sim, o número é ${randomId}`;
+      showToast('O modelo de IA não foi carregado corretamente.');
+      btnAi.disabled = false;
+      btnAi.innerHTML = originalHtml;
+      return;
     }
     
     const match = ans.match(/\d{5,}/);

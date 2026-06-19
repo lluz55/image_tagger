@@ -24,10 +24,7 @@
         Modo Incrementador (adiciona contador ao fim)
       </label>
       <div id="counter-control-group" class="counter-control-group" style="display: none;">
-        <span>Próximo:</span>
-        <button class="btn-counter-adjust" onclick="adjustCounter(-1)">-</button>
-        <input type="number" id="counter-value-input" value="1" min="1" onchange="setCounterValue(this.value)">
-        <button class="btn-counter-adjust" onclick="adjustCounter(1)">+</button>
+        <span>Próximo número: <strong id="counter-display-value" style="color: #66bb6a;">1</strong></span>
         <button id="btn-counter-reset" class="btn-counter-reset" style="display: none;" onclick="resetCounter()" title="Resetar contador para 1">Reset</button>
       </div>
     </div>

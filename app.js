@@ -226,12 +226,22 @@ async function updateCounterFromHistory() {
 
 function updateResetButtonVisibility() {
   const btn = document.getElementById('btn-counter-reset');
-  if (!btn) return;
+  const displayVal = document.getElementById('counter-display-value');
+  const ctrlGroup = document.getElementById('counter-control-group');
+  
+  if (!ctrlGroup) return;
+  
   const current = readCounterValue();
-  if (current !== 1 && readIncrementMode()) {
-    btn.style.display = 'inline-block';
+  const active = readIncrementMode();
+  
+  if (active) {
+    ctrlGroup.style.display = 'flex';
+    if (displayVal) displayVal.textContent = current;
+    if (btn) {
+      btn.style.display = (current !== 1) ? 'inline-block' : 'none';
+    }
   } else {
-    btn.style.display = 'none';
+    ctrlGroup.style.display = 'none';
   }
 }
 
@@ -245,27 +255,9 @@ async function toggleIncrementMode() {
   const active = chk.checked;
   writeIncrementMode(active);
   
-  const ctrl = document.getElementById('counter-control-group');
-  if (ctrl) {
-    ctrl.style.display = active ? 'flex' : 'none';
-  }
-  
   if (active) {
     await updateCounterFromHistory();
   }
-  
-  updateNameHint();
-  renderCanvas();
-  updateResetButtonVisibility();
-}
-
-function adjustCounter(amt) {
-  const current = readCounterValue();
-  const next = Math.max(1, current + amt);
-  writeCounterValue(next);
-  
-  const input = document.getElementById('counter-value-input');
-  if (input) input.value = next;
   
   updateNameHint();
   renderCanvas();
@@ -277,9 +269,6 @@ function setCounterValue(val) {
   if (isNaN(num) || num < 1) num = 1;
   writeCounterValue(num);
   
-  const input = document.getElementById('counter-value-input');
-  if (input) input.value = num;
-  
   updateNameHint();
   renderCanvas();
   updateResetButtonVisibility();
@@ -288,9 +277,6 @@ function setCounterValue(val) {
 function incrementCounter() {
   const current = readCounterValue();
   writeCounterValue(current + 1);
-  
-  const input = document.getElementById('counter-value-input');
-  if (input) input.value = current + 1;
   
   updateNameHint();
   updateResetButtonVisibility();
@@ -309,16 +295,8 @@ function resolveName(name, counter) {
 
 function initIncrementMode() {
   const active = readIncrementMode();
-  const counter = readCounterValue();
-  
   const chk = document.getElementById('increment-mode-checkbox');
   if (chk) chk.checked = active;
-  
-  const ctrl = document.getElementById('counter-control-group');
-  if (ctrl) ctrl.style.display = active ? 'flex' : 'none';
-  
-  const input = document.getElementById('counter-value-input');
-  if (input) input.value = counter;
   
   updateResetButtonVisibility();
 }

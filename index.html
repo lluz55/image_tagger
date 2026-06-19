@@ -31,6 +31,15 @@
       </div>
     </div>
 
+    <!-- Habilitar Auto-Tag IA (Opcional) -->
+    <div class="incrementer-wrap" style="margin-top: 4px;">
+      <label class="checkbox-container">
+        <input type="checkbox" id="ai-mode-checkbox" onchange="toggleAiMode()">
+        <span class="checkmark"></span>
+        Auto-Tag com IA Local (Opcional - 225MB)
+      </label>
+    </div>
+
     <div id="prefix-hint"></div>
 
     <button class="btn btn-primary" onclick="triggerCapture()">
@@ -75,9 +84,23 @@
     <canvas id="canvas"></canvas>
     
     <div class="section">
-      <span class="rename-label">Nome da tag</span>
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+        <span class="rename-label" style="margin: 0;">Nome da tag</span>
+        <button id="btn-trigger-ai" class="btn-ai-action" style="display: none;" onclick="runAiAutoTag()" title="Extrair valores da imagem usando IA">
+          <span>🤖</span> Auto-Tag IA
+        </button>
+      </div>
       <input id="tag-rename" class="field" type="text" style="margin-top:8px"
              autocomplete="off" spellcheck="false" placeholder="Nome da tag...">
+      
+      <!-- Progresso de Carregamento da IA -->
+      <div id="ai-progress-container" class="ai-progress-container" style="display: none; margin-top: 8px;">
+        <div class="ai-progress-bar-bg">
+          <div id="ai-progress-bar" class="ai-progress-bar" style="width: 0%;"></div>
+        </div>
+        <div id="ai-progress-text" class="ai-progress-text">Carregando modelo de IA (225MB)... 0%</div>
+      </div>
+      
       <div id="prefix-hint-2" style="font-size: 0.78rem; color: #4caf50; padding: 6px 4px 0; min-height: 1.2em;"></div>
     </div>
 
@@ -116,6 +139,31 @@
   </div>
 
   <div id="toast">Imagem salva com sucesso!</div>
+
+  <!-- Modal de Visualização de Imagem Recente -->
+  <div id="preview-modal" class="modal" onclick="closePreviewModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <button class="modal-close" onclick="closePreviewModal()" title="Fechar">×</button>
+      <div class="modal-image-container">
+        <img id="modal-image" src="" alt="Imagem Recente">
+      </div>
+      <div class="modal-info">
+        <div id="modal-title" class="modal-title"></div>
+        <div id="modal-date" class="modal-date"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="btn-modal-use" onclick="useModalTag()">
+          <span>🏷️</span> Usar Tag
+        </button>
+        <button class="btn btn-primary" id="btn-modal-download" onclick="downloadModalImage()">
+          <span>💾</span> Baixar
+        </button>
+        <button class="btn btn-danger" id="btn-modal-delete" onclick="deleteModalImage()">
+          <span>🗑️</span> Excluir
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Inputs ocultos -->
   <input type="file" id="input-cam"     accept="image/*" capture="environment">

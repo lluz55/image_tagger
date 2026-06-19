@@ -30,12 +30,19 @@
     </div>
 
     <!-- Habilitar Auto-Tag IA (Opcional) -->
-    <div class="incrementer-wrap" style="margin-top: 4px;">
+    <div class="incrementer-wrap" style="margin-top: 4px; flex-direction: column; align-items: flex-start; gap: 8px;">
       <label class="checkbox-container">
         <input type="checkbox" id="ai-mode-checkbox" onchange="toggleAiMode()">
         <span class="checkmark"></span>
-        Auto-Tag com IA Local (Opcional - 225MB)
+        Auto-Tag com IA Local (Opcional)
       </label>
+      <div id="ai-model-select-group" class="ai-model-select-group" style="display: none; width: 100%; margin-top: 4px;">
+        <span style="font-size: 0.78rem; color: #888; display: block; margin-bottom: 6px;">Escolha o modelo de IA:</span>
+        <select id="ai-model-select" class="field" style="padding: 8px 12px; font-size: 0.88rem; border-radius: 8px;" onchange="changeAiModel()">
+          <option value="liquid">LiquidAI LFM2.5-VL-450M (ONNX - 225MB)</option>
+          <option value="paddle">PaddleOCR-VL-1.6 (GGUF - 600MB)</option>
+        </select>
+      </div>
     </div>
 
     <div id="prefix-hint"></div>
@@ -175,6 +182,6 @@
   <input type="file" id="input-cam"     accept="image/*" capture="environment">
   <input type="file" id="input-gallery" accept="image/*">
 
-  <script src="app.js" defer></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -129,7 +129,7 @@ export async function loadAiModel() {
     warningText.style.display = 'block';
 
     try {
-      const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3');
+      const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0');
       const { pipeline } = module;
       
       aiPipeline = await pipeline('document-question-answering', 'LiquidAI/LFM2.5-VL-450M-ONNX', {

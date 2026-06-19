@@ -206,7 +206,41 @@ function writeCounterValue(val) {
   localStorage.setItem(COUNTER_VALUE_KEY, val);
 }
 
-function toggleIncrementMode() {
+async function updateCounterFromHistory() {
+  try {
+    const history = await getRecentImages();
+    if (history && history.length > 0) {
+      const lastItem = history[0];
+      const lastTitle = lastItem.name;
+      const match = lastTitle.match(/(\d+)$/);
+      if (match) {
+        const lastNum = parseInt(match[1]);
+        setCounterValue(lastNum + 1);
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao atualizar contador pelo histórico:', err);
+  }
+}
+
+function updateResetButtonVisibility() {
+  const btn = document.getElementById('btn-counter-reset');
+  if (!btn) return;
+  const current = readCounterValue();
+  if (current !== 1 && readIncrementMode()) {
+    btn.style.display = 'inline-block';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function resetCounter() {
+  setCounterValue(1);
+  showToast('Contador resetado para 1.');
+}
+
+async function toggleIncrementMode() {
   const chk = document.getElementById('increment-mode-checkbox');
   const active = chk.checked;
   writeIncrementMode(active);
@@ -216,8 +250,13 @@ function toggleIncrementMode() {
     ctrl.style.display = active ? 'flex' : 'none';
   }
   
+  if (active) {
+    await updateCounterFromHistory();
+  }
+  
   updateNameHint();
   renderCanvas();
+  updateResetButtonVisibility();
 }
 
 function adjustCounter(amt) {
@@ -230,6 +269,7 @@ function adjustCounter(amt) {
   
   updateNameHint();
   renderCanvas();
+  updateResetButtonVisibility();
 }
 
 function setCounterValue(val) {
@@ -242,6 +282,7 @@ function setCounterValue(val) {
   
   updateNameHint();
   renderCanvas();
+  updateResetButtonVisibility();
 }
 
 function incrementCounter() {
@@ -252,11 +293,16 @@ function incrementCounter() {
   if (input) input.value = current + 1;
   
   updateNameHint();
+  updateResetButtonVisibility();
 }
 
 function resolveName(name, counter) {
-  if (readIncrementMode() && name.includes('{}')) {
-    return name.replaceAll('{}', counter);
+  if (readIncrementMode()) {
+    const trimmed = name.trim();
+    if (trimmed) {
+      return trimmed + ' ' + counter;
+    }
+    return String(counter);
   }
   return name;
 }
@@ -273,6 +319,8 @@ function initIncrementMode() {
   
   const input = document.getElementById('counter-value-input');
   if (input) input.value = counter;
+  
+  updateResetButtonVisibility();
 }
 
 function updateNameHint() {
@@ -1022,6 +1070,9 @@ initIncrementMode();
 initAiMode();
 
 // Inicializa o banco de dados IndexedDB e depois renderiza o histórico
-initDB().then(() => {
+initDB().then(async () => {
+  if (readIncrementMode()) {
+    await updateCounterFromHistory();
+  }
   renderHistory();
 });

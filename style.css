@@ -697,3 +697,20 @@ input[type="file"] { display: none; }
   text-align: center;
   font-family: monospace;
 }
+
+.btn-counter-reset {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #c62828;
+  border: none;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-counter-reset:active {
+  background: #b71c1c;
+  transform: scale(0.95);
+}

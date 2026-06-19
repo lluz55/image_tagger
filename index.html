@@ -21,13 +21,14 @@
       <label class="checkbox-container">
         <input type="checkbox" id="increment-mode-checkbox" onchange="toggleIncrementMode()">
         <span class="checkmark"></span>
-        Modo Incrementador (substitui <code style="color:#66bb6a">{}</code>)
+        Modo Incrementador (adiciona contador ao fim)
       </label>
       <div id="counter-control-group" class="counter-control-group" style="display: none;">
         <span>Próximo:</span>
         <button class="btn-counter-adjust" onclick="adjustCounter(-1)">-</button>
         <input type="number" id="counter-value-input" value="1" min="1" onchange="setCounterValue(this.value)">
         <button class="btn-counter-adjust" onclick="adjustCounter(1)">+</button>
+        <button id="btn-counter-reset" class="btn-counter-reset" style="display: none;" onclick="resetCounter()" title="Resetar contador para 1">Reset</button>
       </div>
     </div>
 

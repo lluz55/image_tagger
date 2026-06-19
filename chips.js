@@ -1,7 +1,5 @@
-// chips.js
 import { 
-  PREFIXES_KEY, ACTIVE_PREFIX_KEY, TAGS_KEY, ACTIVE_TAGS_KEY,
-  prefixChips = document.getElementById('prefix-chips') ? null : null
+  PREFIXES_KEY, ACTIVE_PREFIX_KEY, TAGS_KEY, ACTIVE_TAGS_KEY
 } from './state.js';
 import { updateNameHint, renderCanvas } from './app.js';
 

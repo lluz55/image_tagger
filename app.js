@@ -2,7 +2,7 @@
 import { 
   inputCam, inputGallery, nameInput, prefixHint, prefixInput, prefixInput2,
   tagInput, tagInput2, tagRename, prefixHint2, screenCap, screenPrev,
-  canvas, ctx, toast, state, showToast
+  canvas, ctx, toast, state, showToast, saveBlobToDevice
 } from './state.js';
 import { initDB, addRecentImage } from './db.js';
 import { 
@@ -12,11 +12,11 @@ import {
 import { 
   readIncrementMode, readCounterValue, incrementCounter, 
   resolveName, initIncrementMode, setCounterValue, 
-  toggleIncrementMode, resetCounter 
+  toggleIncrementMode, resetCounter, updateCounterFromHistory
 } from './incrementer.js';
 import { 
   toggleAiMode, changeAiModel, runAiAutoTag, 
-  initAiMode, minimizeAiPanel, updateCounterFromHistory 
+  initAiMode, minimizeAiPanel
 } from './ai.js';
 import { 
   renderHistory, makeThumbnail, openPreviewModal, closePreviewModal, 
@@ -183,59 +183,6 @@ nameInput.addEventListener('input', updateNameHint);
 
 // ── Salvar ───────────────────────────────────────────────
 
-let activeDownloadUrl = null;
-
-export async function saveBlobToDevice(blob, filename) {
-  if ('showSaveFilePicker' in window) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: filename,
-        types: [{
-          description: 'JPEG Image',
-          accept: { 'image/jpeg': ['.jpg', '.jpeg'] },
-        }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      showToast('Imagem salva com sucesso!');
-      return true;
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        showToast('Salvamento cancelado.');
-        return false;
-      }
-      console.warn('showSaveFilePicker falhou ou foi rejeitado, tentando fallback...', err);
-    }
-  }
-
-  try {
-    if (activeDownloadUrl) {
-      URL.revokeObjectURL(activeDownloadUrl);
-    }
-    activeDownloadUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = activeDownloadUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    
-    showToast('Download iniciado! Verifique seus downloads.');
-    setTimeout(() => {
-      if (activeDownloadUrl === a.href) {
-        URL.revokeObjectURL(activeDownloadUrl);
-        activeDownloadUrl = null;
-      }
-    }, 15000);
-    return true;
-  } catch (err) {
-    console.error('Fallback de download falhou:', err);
-    showToast('Erro ao tentar salvar a imagem.');
-    return false;
-  }
-}
-
 export async function saveImage() {
   const saveBtn = document.querySelector('.fab-save');
   if (saveBtn.disabled) return;
@@ -333,9 +280,16 @@ window.runAiAutoTag = runAiAutoTag;
 window.minimizeAiPanel = minimizeAiPanel;
 window.resetCounter = resetCounter;
 
+// ── Evento de mudança global ─────────────────────────────
+window.addEventListener('app:change', () => {
+  updateNameHint();
+  renderCanvas();
+});
+
 // ── Init ─────────────────────────────────────────────────
 renderPrefixes();
 renderTags();
+updateNameHint();
 initIncrementMode();
 initAiMode();
 

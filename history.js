@@ -1,7 +1,6 @@
 // history.js
 import { getRecentImages, deleteRecentImage } from './db.js';
-import { state, nameInput, showToast } from './state.js';
-import { updateNameHint, saveBlobToDevice } from './app.js';
+import { state, nameInput, showToast, saveBlobToDevice } from './state.js';
 
 export function makeThumbnail() {
   const off  = document.createElement('canvas');
@@ -84,7 +83,7 @@ export async function renderHistory() {
       e.stopPropagation();
       nameInput.value = item.name;
       nameInput.focus();
-      updateNameHint();
+      window.dispatchEvent(new CustomEvent('app:change'));
       showToast('Tag copiada!');
     });
 
@@ -139,7 +138,7 @@ export function useModalTag() {
   if (!currentModalItem) return;
   nameInput.value = currentModalItem.name;
   nameInput.focus();
-  updateNameHint();
+  window.dispatchEvent(new CustomEvent('app:change'));
   closePreviewModal();
   showToast('Tag copiada!');
 }

@@ -1,6 +1,5 @@
 // ai.js
 import { canvas, tagRename, showToast, state } from './state.js';
-import { updateNameHint, renderCanvas } from './app.js';
 
 const AI_MODE_KEY = 'img_tagger_ai_mode';
 const AI_MODEL_KEY = 'img_tagger_ai_model';
@@ -255,8 +254,7 @@ export async function runAiAutoTag() {
     if (match) {
       const num = match[0];
       tagRename.value = (tagRename.value.trim() + ' ' + num).trim();
-      updateNameHint();
-      renderCanvas();
+      window.dispatchEvent(new CustomEvent('app:change'));
       showToast(`Patrimônio detectado e adicionado: ${num}`);
     } else {
       showToast('Nenhuma sequência de 5 ou mais números consecutivos detectada.');

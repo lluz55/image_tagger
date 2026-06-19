@@ -1,7 +1,6 @@
 import { 
   PREFIXES_KEY, ACTIVE_PREFIX_KEY, TAGS_KEY, ACTIVE_TAGS_KEY
 } from './state.js';
-import { updateNameHint, renderCanvas } from './app.js';
 
 // ── Prefixos ────────────────────────────────────────────
 
@@ -31,14 +30,14 @@ export function addPrefix(inputId) {
   localStorage.setItem(ACTIVE_PREFIX_KEY, val);  // ativa automaticamente
   el.value = '';
   renderPrefixes();
-  renderCanvas();
+  window.dispatchEvent(new CustomEvent('app:change'));
 }
 
 export function togglePrefix(p) {
   const current = readActivePrefix();
   localStorage.setItem(ACTIVE_PREFIX_KEY, current === p ? '' : p);
   renderPrefixes();
-  renderCanvas();
+  window.dispatchEvent(new CustomEvent('app:change'));
 }
 
 export function deletePrefix(p) {
@@ -46,7 +45,7 @@ export function deletePrefix(p) {
   localStorage.setItem(PREFIXES_KEY, JSON.stringify(arr));
   if (readActivePrefix() === p) localStorage.setItem(ACTIVE_PREFIX_KEY, '');
   renderPrefixes();
-  renderCanvas();
+  window.dispatchEvent(new CustomEvent('app:change'));
 }
 
 export function renderPrefixes() {
@@ -84,8 +83,6 @@ export function renderPrefixes() {
       });
     }
   });
-
-  updateNameHint();
 }
 
 // ── Tags ────────────────────────────────────────────────
@@ -110,7 +107,7 @@ export function addTag(inputId) {
   localStorage.setItem(ACTIVE_TAGS_KEY, JSON.stringify([val]));
   el.value = '';
   renderTags();
-  renderCanvas();
+  window.dispatchEvent(new CustomEvent('app:change'));
 }
 
 export function toggleTag(t) {
@@ -118,7 +115,7 @@ export function toggleTag(t) {
   const newActive = active.includes(t) ? [] : [t];
   localStorage.setItem(ACTIVE_TAGS_KEY, JSON.stringify(newActive));
   renderTags();
-  renderCanvas();
+  window.dispatchEvent(new CustomEvent('app:change'));
 }
 
 export function deleteTag(t) {
@@ -127,7 +124,7 @@ export function deleteTag(t) {
   let active = readActiveTags().filter(x => x !== t);
   localStorage.setItem(ACTIVE_TAGS_KEY, JSON.stringify(active));
   renderTags();
-  renderCanvas();
+  window.dispatchEvent(new CustomEvent('app:change'));
 }
 
 export function renderTags() {
@@ -165,6 +162,4 @@ export function renderTags() {
       });
     }
   });
-
-  updateNameHint();
 }

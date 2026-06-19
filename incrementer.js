@@ -1,6 +1,5 @@
 // incrementer.js
 import { getRecentImages } from './db.js';
-import { updateNameHint, renderCanvas } from './app.js';
 import { showToast } from './state.js';
 
 const INCREMENT_MODE_KEY = 'img_tagger_increment_mode';
@@ -76,8 +75,7 @@ export async function toggleIncrementMode() {
     await updateCounterFromHistory();
   }
   
-  updateNameHint();
-  renderCanvas();
+  window.dispatchEvent(new CustomEvent('app:change'));
   updateResetButtonVisibility();
 }
 
@@ -86,8 +84,7 @@ export function setCounterValue(val) {
   if (isNaN(num) || num < 1) num = 1;
   writeCounterValue(num);
   
-  updateNameHint();
-  renderCanvas();
+  window.dispatchEvent(new CustomEvent('app:change'));
   updateResetButtonVisibility();
 }
 
@@ -95,7 +92,7 @@ export function incrementCounter() {
   const current = readCounterValue();
   writeCounterValue(current + 1);
   
-  updateNameHint();
+  window.dispatchEvent(new CustomEvent('app:change'));
   updateResetButtonVisibility();
 }
 

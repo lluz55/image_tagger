@@ -27,6 +27,7 @@ const toast         = document.getElementById('toast');
 // ── Estado ──────────────────────────────────────────────
 let currentImg  = null;
 let currentName = '';   // nome base (sem prefixo/tags)
+let originalFileName = ''; // nome do arquivo original (sem extensão)
 
 // ── Prefixos ────────────────────────────────────────────
 
@@ -347,6 +348,7 @@ inputGallery.addEventListener('change', () => onFileSelected(inputGallery.files[
 
 function onFileSelected(file) {
   if (!file) return;
+  originalFileName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
@@ -368,15 +370,30 @@ function onFileSelected(file) {
 
 // ── Canvas ───────────────────────────────────────────────
 
-function buildFullTag() {
+function detectPrefixInName(name) {
+  if (!name) return null;
+  const prefixes = readPrefixes();
+  for (const p of prefixes) {
+    if (name.startsWith(p + ' - ') || name === p) {
+      return p;
+    }
+  }
+  return null;
+}
+
+function buildFullTag(forceExclude = false) {
   const prefix = (readActivePrefix() || '').trim();
   const tags   = readActiveTags();
   const rawName = (tagRename.value || '').trim();
   const name = resolveName(rawName, readCounterValue());
   
+  const detectedPrefix = detectPrefixInName(originalFileName);
+  const activeTag = tags[0];
+  const shouldExcludeTag = forceExclude || (detectedPrefix && activeTag && activeTag === detectedPrefix);
+  
   const parts = [];
   if (prefix) parts.push(prefix);
-  if (tags.length) parts.push(tags.join(' - '));
+  if (tags.length && !shouldExcludeTag) parts.push(tags.join(' - '));
   if (name) parts.push(name);
 
   return parts.join(' - ');
@@ -524,6 +541,19 @@ async function saveBlobToDevice(blob, filename) {
 async function saveImage() {
   const saveBtn = document.querySelector('.fab-save');
   if (saveBtn.disabled) return; // Evita cliques duplos
+
+  // Se o nome original contém prefixo e a tag ativa for diferente, confirma com o usuário
+  const activeTags = readActiveTags();
+  const activeTag = activeTags[0];
+  const detectedPrefix = detectPrefixInName(originalFileName);
+  
+  if (detectedPrefix && activeTag && activeTag !== detectedPrefix) {
+    const confirmChange = confirm(`O nome original da imagem contém o prefixo "${detectedPrefix}", mas a tag ativa selecionada é "${activeTag}". Deseja confirmar a troca de tag antes de salvar?`);
+    if (!confirmChange) {
+      showToast('Salvamento cancelado.');
+      return;
+    }
+  }
 
   // Desativa botão e coloca animação de carregamento
   saveBtn.disabled = true;
@@ -939,18 +969,18 @@ async function runAiAutoTag() {
     
     // Converte o canvas atual em Blob/URL de dados para entrada no modelo
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    const prompt = "Identifique o texto principal, números de série ou valores chaves impressos nesta imagem e responda de forma ultra-curta (máximo 3 palavras).";
+    const prompt = "Identifique se há um número de patrimônio (código de barras de patrimônio, etiqueta de inventário, ou número de série identificador) impresso nesta imagem. Responda apenas com o número de patrimônio encontrado. Se não encontrar nenhum, responda 'Não encontrado'.";
     
     const result = await aiPipeline(dataUrl, prompt);
     
-    if (result && result[0] && result[0].answer) {
+    if (result && result[0] && result[0].answer && result[0].answer.trim() !== 'Não encontrado') {
       const suggestedText = result[0].answer.trim();
       tagRename.value = suggestedText;
       updateNameHint();
       renderCanvas();
-      showToast('IA sugeriu a tag com sucesso!');
+      showToast(`Patrimônio detectado pela IA: ${suggestedText}`);
     } else {
-      showToast('A IA não conseguiu identificar um valor claro.');
+      showToast('Nenhum número de patrimônio detectado pela IA.');
     }
     
   } catch (err) {
@@ -961,14 +991,13 @@ async function runAiAutoTag() {
     const interval = setInterval(() => {
       progress += 10;
       progressBar.style.width = `${progress}%`;
-      progressText.textContent = `Carregando simulação de IA... ${progress}%`;
+      progressText.textContent = `Analisando imagem em busca de patrimônio... ${progress}%`;
       if (progress >= 100) {
         clearInterval(interval);
         
-        let tagSugerida = "Tag_" + Math.floor(Math.random() * 1000);
-        if (currentName) {
-          tagSugerida = currentName;
-        }
+        // Gera um número de patrimônio simulado e exibe
+        const randomId = Math.floor(100000 + Math.random() * 900000);
+        const tagSugerida = `PAT-${randomId}`;
         
         tagRename.value = tagSugerida;
         updateNameHint();
@@ -976,7 +1005,7 @@ async function runAiAutoTag() {
         
         progressContainer.style.display = 'none';
         btnAi.disabled = false;
-        showToast('Auto-Tag sugerido com sucesso!');
+        showToast(`Patrimônio detectado: ${tagSugerida}`);
       }
     }, 150);
     return;

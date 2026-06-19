@@ -3,7 +3,7 @@ import { canvas, tagRename, showToast, state } from './state.js';
 
 const AI_MODE_KEY = 'img_tagger_ai_mode';
 
-let tesseractWorker = null;
+let donutPipeline = null;
 let barcodeReader = null;
 export let isAiModelReady = false;
 export let isDownloading = false;
@@ -69,45 +69,6 @@ export function minimizeAiPanel() {
   }
 }
 
-function getPreprocessedCanvas(originalCanvas) {
-  const offscreen = document.createElement('canvas');
-  offscreen.width = originalCanvas.width;
-  offscreen.height = originalCanvas.height;
-  const octx = offscreen.getContext('2d');
-  octx.drawImage(originalCanvas, 0, 0);
-  
-  try {
-    const imgData = octx.getImageData(0, 0, offscreen.width, offscreen.height);
-    const data = imgData.data;
-    
-    // Converte para tons de cinza e aumenta o contraste
-    const contrastFactor = 1.6;
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i+1];
-      const b = data[i+2];
-      
-      // Coeficientes padrão BT.601
-      let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      
-      // Amplia contraste
-      gray = contrastFactor * (gray - 128) + 128;
-      
-      const finalVal = Math.min(255, Math.max(0, gray));
-      
-      data[i] = finalVal;
-      data[i+1] = finalVal;
-      data[i+2] = finalVal;
-    }
-    
-    octx.putImageData(imgData, 0, 0);
-    return offscreen;
-  } catch (err) {
-    console.warn('Erro ao processar imagem para OCR. Usando canvas original.', err);
-    return originalCanvas;
-  }
-}
-
 export async function loadAiModel() {
   if (isAiModelReady || isDownloading) return;
   
@@ -128,58 +89,62 @@ export async function loadAiModel() {
   progressBar.style.width = '0%';
   percentText.textContent = '0%';
   
-  title.textContent = '🤖 Inicializando Leitor / OCR';
+  title.textContent = '🤖 Inicializando Leitor / IA';
   statusText.innerHTML = 'Carregando motores de leitura... <span>0%</span>';
   warningText.style.display = 'block';
-  warningText.innerHTML = '⚠️ <strong>Atenção:</strong> Inicializando leitor de código de barras e OCR local (~10MB). Não feche o navegador.';
+  warningText.innerHTML = '⚠️ <strong>Atenção:</strong> Inicializando leitor de código de barras e modelo VQA local (~220MB). Não feche o navegador.';
 
   try {
     // 1. Carrega leitor de código de barras (ZXing)
-    statusText.innerHTML = 'Carregando decodificador de código de barras... <span>15%</span>';
-    progressBar.style.width = '15%';
-    percentText.textContent = '15%';
+    statusText.innerHTML = 'Carregando decodificador de código de barras... <span>10%</span>';
+    progressBar.style.width = '10%';
+    percentText.textContent = '10%';
     const zxingModule = await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm');
     barcodeReader = new zxingModule.BrowserMultiFormatReader();
 
-    // 2. Carrega motor OCR (Tesseract.js)
-    statusText.innerHTML = 'Carregando motor OCR (WebAssembly)... <span>35%</span>';
-    progressBar.style.width = '35%';
-    percentText.textContent = '35%';
-    const Tesseract = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
+    // 2. Carrega motor Donut VQA (Transformers.js)
+    statusText.innerHTML = 'Carregando modelo Donut DocVQA... <span>20%</span>';
+    progressBar.style.width = '20%';
+    percentText.textContent = '20%';
     
-    tesseractWorker = await Tesseract.default.createWorker('eng', 1, {
-      logger: m => {
-        if (m.status === 'loading tesseract core') {
-          progressBar.style.width = '55%';
-          percentText.textContent = '55%';
-          statusText.innerHTML = 'Carregando núcleo do OCR... <span>55%</span>';
-        } else if (m.status === 'initializing api') {
-          progressBar.style.width = '75%';
-          percentText.textContent = '75%';
-          statusText.innerHTML = 'Inicializando API... <span>75%</span>';
-        } else if (m.status === 'loading language traineddata') {
-          const pct = Math.round(75 + (m.progress || 0) * 20);
-          progressBar.style.width = `${pct}%`;
-          percentText.textContent = `${pct}%`;
-          statusText.innerHTML = `Baixando modelo de idioma: eng <span>${pct}%</span>`;
-        }
-      }
-    });
+    const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0');
+    const { pipeline } = module;
 
-    // 3. Configura whitelist de números
-    statusText.innerHTML = 'Otimizando parâmetros de OCR... <span>95%</span>';
-    progressBar.style.width = '95%';
-    percentText.textContent = '95%';
-    await tesseractWorker.setParameters({
-      tessedit_char_whitelist: '0123456789',
-    });
+    const handleProgress = (data) => {
+      if (data.status === 'progress') {
+        const percent = Math.round(data.progress);
+        const globalPercent = Math.round(20 + (percent * 0.75));
+        progressBar.style.width = `${globalPercent}%`;
+        percentText.textContent = `${globalPercent}%`;
+        const filename = data.file.substring(data.file.lastIndexOf('/') + 1);
+        statusText.innerHTML = `Baixando modelo IA: ${filename} <span>${globalPercent}%</span>`;
+      } else if (data.status === 'ready') {
+        statusText.innerHTML = `Carregado: ${data.file}`;
+      }
+    };
+
+    try {
+      console.log('[AI Model] Carregando Donut com WebGPU...');
+      donutPipeline = await pipeline('document-question-answering', 'Xenova/donut-base-finetuned-docvqa', {
+        device: 'webgpu',
+        progress_callback: handleProgress
+      });
+    } catch (webGpuErr) {
+      console.warn("[AI Model] Falha no WebGPU, tentando fallback para WASM...", webGpuErr);
+      statusText.innerHTML = 'WebGPU incompatível. Iniciando em modo WASM... <span>20%</span>';
+      
+      donutPipeline = await pipeline('document-question-answering', 'Xenova/donut-base-finetuned-docvqa', {
+        device: 'wasm',
+        progress_callback: handleProgress
+      });
+    }
 
     isAiModelReady = true;
     isDownloading = false;
     progressBar.style.width = '100%';
     percentText.textContent = '100%';
     title.textContent = '🤖 Leitores Prontos!';
-    statusText.textContent = 'Motores de leitura e OCR inicializados com sucesso.';
+    statusText.textContent = 'Modelos de leitura e VQA carregados com sucesso.';
     warningText.style.display = 'none';
     
     setTimeout(() => {
@@ -191,11 +156,11 @@ export async function loadAiModel() {
     isAiModelReady = false;
     isDownloading = false;
     title.textContent = '❌ Falha ao Inicializar';
-    statusText.textContent = 'Dispositivo sem suporte a WASM ou falha de rede.';
+    statusText.textContent = 'Erro ao baixar ou carregar os modelos locais.';
     warningText.style.display = 'none';
     progressBar.style.background = '#c62828';
     progressBar.style.width = '100%';
-    showToast('Erro ao carregar os motores de leitura.');
+    showToast('Erro ao inicializar os leitores.');
     setTimeout(() => {
       panel.classList.remove('show');
     }, 5000);
@@ -204,7 +169,7 @@ export async function loadAiModel() {
 
 export async function runAiAutoTag() {
   if (!isAiModelReady) {
-    showToast('Aguarde o carregamento dos motores de leitura...');
+    showToast('Aguarde o carregamento do modelo de leitura...');
     return;
   }
   
@@ -239,20 +204,36 @@ export async function runAiAutoTag() {
       }
     }
     
-    // ── PASSO 2: Fallback para OCR do Tesseract Otimizado ──
-    if (!tagFound && tesseractWorker) {
-      btnAi.innerHTML = '<span>🤖</span> Processando OCR...';
-      console.log('[OCR] Iniciando processamento de imagem para OCR...');
+    // ── PASSO 2: Fallback para Donut VQA ──
+    if (!tagFound && donutPipeline) {
+      btnAi.innerHTML = '<span>🤖</span> Lendo com IA...';
+      console.log('[AI] Enviando imagem para Donut DocVQA...');
       
-      const processedCanvas = getPreprocessedCanvas(canvas);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
       
-      const ret = await tesseractWorker.recognize(processedCanvas);
-      const text = ret.data.text || '';
-      console.log('[OCR] Texto reconhecido:', text);
+      const questions = [
+        'What is the asset tag or number?',
+        'What is the serial number?',
+        'What is the tag number?'
+      ];
       
-      const match = text.match(/\d{5,}/);
-      if (match) {
-        tagFound = match[0];
+      for (const question of questions) {
+        try {
+          console.log(`[AI] Perguntando: "${question}"`);
+          const result = await donutPipeline(dataUrl, question);
+          if (result && result[0] && result[0].answer) {
+            const ans = result[0].answer.trim();
+            console.log(`[AI] Resposta para "${question}":`, ans);
+            
+            const match = ans.match(/\d{5,}/);
+            if (match) {
+              tagFound = match[0];
+              break;
+            }
+          }
+        } catch (vqaErr) {
+          console.warn(`[AI] Falha ao processar pergunta "${question}":`, vqaErr);
+        }
       }
     }
     

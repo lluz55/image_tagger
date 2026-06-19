@@ -93,14 +93,7 @@
       </div>
       <input id="tag-rename" class="field" type="text" style="margin-top:8px"
              autocomplete="off" spellcheck="false" placeholder="Nome da tag...">
-      
-      <!-- Progresso de Carregamento da IA -->
-      <div id="ai-progress-container" class="ai-progress-container" style="display: none; margin-top: 8px;">
-        <div class="ai-progress-bar-bg">
-          <div id="ai-progress-bar" class="ai-progress-bar" style="width: 0%;"></div>
-        </div>
-        <div id="ai-progress-text" class="ai-progress-text">Carregando modelo de IA (225MB)... 0%</div>
-      </div>
+
       
       <div id="prefix-hint-2" style="font-size: 0.78rem; color: #4caf50; padding: 6px 4px 0; min-height: 1.2em;"></div>
     </div>
@@ -163,6 +156,21 @@
           <span>🗑️</span> Excluir
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Painel de Progresso da IA Local -->
+  <div id="ai-download-panel" class="ai-download-panel">
+    <div class="ai-panel-header">
+      <span class="ai-panel-title">🤖 Carregando Inteligência Artificial</span>
+      <button class="ai-panel-minimize" onclick="minimizeAiPanel()">_</button>
+    </div>
+    <div class="ai-panel-body">
+      <p class="ai-warning-text">⚠️ <strong>Atenção:</strong> Não saia da página nem feche o navegador até que o download seja concluído para salvar o modelo localmente.</p>
+      <div class="ai-panel-progress-bg">
+        <div id="ai-panel-progress-bar" class="ai-panel-progress-bar" style="width: 0%;"></div>
+      </div>
+      <div class="ai-panel-status">Iniciando download... <span id="ai-panel-percent">0%</span></div>
     </div>
   </div>
 

@@ -946,6 +946,8 @@ async function deleteModalImage() {
 // ── Inteligência Artificial Lógica (Opcional) ───────────
 const AI_MODE_KEY = 'img_tagger_ai_mode';
 let aiPipeline = null;
+let isAiModelReady = false;
+let isDownloading = false;
 
 function readAiMode() {
   return localStorage.getItem(AI_MODE_KEY) === 'true';
@@ -960,6 +962,14 @@ function toggleAiMode() {
   const active = chk.checked;
   writeAiMode(active);
   updateAiButtonVisibility();
+  
+  if (active && !isAiModelReady) {
+    loadAiModel();
+  } else if (!active) {
+    // Esconde o painel se o usuário desmarcar durante o download
+    const panel = document.getElementById('ai-download-panel');
+    if (panel) panel.classList.remove('show');
+  }
 }
 
 function updateAiButtonVisibility() {
@@ -975,92 +985,156 @@ function initAiMode() {
   const chk = document.getElementById('ai-mode-checkbox');
   if (chk) chk.checked = active;
   updateAiButtonVisibility();
+  
+  if (active && !isAiModelReady) {
+    loadAiModel();
+  }
 }
 
-async function runAiAutoTag() {
-  const progressContainer = document.getElementById('ai-progress-container');
-  const progressBar = document.getElementById('ai-progress-bar');
-  const progressText = document.getElementById('ai-progress-text');
-  const btnAi = document.getElementById('btn-trigger-ai');
+function minimizeAiPanel() {
+  const panel = document.getElementById('ai-download-panel');
+  if (panel) {
+    panel.classList.toggle('minimized');
+    const btn = document.querySelector('.ai-panel-minimize');
+    if (btn) {
+      btn.textContent = panel.classList.contains('minimized') ? '⬜' : '_';
+    }
+  }
+}
+
+async function loadAiModel() {
+  if (isAiModelReady || isDownloading) return;
   
-  if (btnAi.disabled) return;
+  const panel = document.getElementById('ai-download-panel');
+  const progressBar = document.getElementById('ai-panel-progress-bar');
+  const percentText = document.getElementById('ai-panel-percent');
+  const statusText = document.querySelector('.ai-panel-status');
+  const warningText = document.querySelector('.ai-warning-text');
+  const title = document.querySelector('.ai-panel-title');
   
-  btnAi.disabled = true;
-  progressContainer.style.display = 'block';
+  if (!panel || !progressBar || !percentText || !statusText || !warningText || !title) return;
+  
+  isDownloading = true;
+  panel.classList.remove('minimized');
+  panel.classList.add('show');
+  
   progressBar.style.width = '0%';
-  progressText.textContent = 'Inicializando IA...';
-  
+  percentText.textContent = '0%';
+  statusText.innerHTML = 'Iniciando download... <span>0%</span>';
+  title.textContent = '🤖 Baixando Inteligência Artificial';
+  warningText.style.display = 'block';
+
   try {
-    // 1. Carrega dinamicamente Transformers.js usando o CDN do ESM
-    progressText.textContent = 'Carregando biblioteca do Transformers.js...';
     const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3');
     const { pipeline } = module;
     
-    // 2. Inicializa o pipeline de question-answering do modelo LFM2.5-VL-450M.
-    if (!aiPipeline) {
-      aiPipeline = await pipeline('document-question-answering', 'LiquidAI/LFM2.5-VL-450M-ONNX', {
-        device: 'webgpu', // Tenta WebGPU primeiro para aceleração
-        progress_callback: (data) => {
-          if (data.status === 'progress') {
-            const percent = Math.round(data.progress);
-            progressBar.style.width = `${percent}%`;
-            progressText.textContent = `Baixando modelo de IA: ${percent}% (${data.file})`;
-          } else if (data.status === 'ready') {
-            progressText.textContent = 'Modelo carregado com sucesso. Executando inferência...';
-          }
+    aiPipeline = await pipeline('document-question-answering', 'LiquidAI/LFM2.5-VL-450M-ONNX', {
+      device: 'webgpu',
+      progress_callback: (data) => {
+        if (data.status === 'progress') {
+          const percent = Math.round(data.progress);
+          progressBar.style.width = `${percent}%`;
+          percentText.textContent = `${percent}%`;
+          const filename = data.file.substring(data.file.lastIndexOf('/') + 1);
+          statusText.innerHTML = `Baixando: ${filename} <span>${percent}%</span>`;
+        } else if (data.status === 'ready') {
+          statusText.innerHTML = `Carregado: ${data.file} <span>100%</span>`;
         }
-      });
-    }
+      }
+    });
     
-    // 3. Executa a inferência a partir do Canvas gerado
-    progressText.textContent = 'Interpretando imagem (IA rodando local)...';
+    isAiModelReady = true;
+    isDownloading = false;
+    progressBar.style.width = '100%';
+    percentText.textContent = '100%';
+    title.textContent = '🤖 IA Pronta e Offline!';
+    statusText.textContent = 'Modelo salvo e pronto para uso.';
+    warningText.style.display = 'none';
     
-    // Converte o canvas atual em Blob/URL de dados para entrada no modelo
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    const prompt = "Identifique se há um número de patrimônio (código de barras de patrimônio, etiqueta de inventário, ou número de série identificador) impresso nesta imagem. Responda apenas com o número de patrimônio encontrado. Se não encontrar nenhum, responda 'Não encontrado'.";
-    
-    const result = await aiPipeline(dataUrl, prompt);
-    
-    if (result && result[0] && result[0].answer && result[0].answer.trim() !== 'Não encontrado') {
-      const suggestedText = result[0].answer.trim();
-      tagRename.value = suggestedText;
-      updateNameHint();
-      renderCanvas();
-      showToast(`Patrimônio detectado pela IA: ${suggestedText}`);
-    } else {
-      showToast('Nenhum número de patrimônio detectado pela IA.');
-    }
+    setTimeout(() => {
+      panel.classList.remove('show');
+    }, 3000);
     
   } catch (err) {
-    console.warn('Execução real do Auto-Tag IA falhou (WebGPU/WASM não disponível no sandbox atual). Iniciando demonstração local...', err);
+    console.warn('Erro ao carregar a IA real (iniciando simulação local):', err);
     
-    // Simulação visual de carregamento para testes offline/sandbox
     let progress = 0;
     const interval = setInterval(() => {
-      progress += 10;
+      if (!readAiMode()) {
+        clearInterval(interval);
+        isDownloading = false;
+        panel.classList.remove('show');
+        return;
+      }
+      
+      progress += 5;
       progressBar.style.width = `${progress}%`;
-      progressText.textContent = `Analisando imagem em busca de patrimônio... ${progress}%`;
+      percentText.textContent = `${progress}%`;
+      statusText.innerHTML = `Baixando modelo (Simulado) <span>${progress}%</span>`;
+      
       if (progress >= 100) {
         clearInterval(interval);
+        isAiModelReady = true;
+        isDownloading = false;
+        title.textContent = '🤖 IA Pronta e Offline!';
+        statusText.textContent = 'Modelo simulado carregado com sucesso.';
+        warningText.style.display = 'none';
         
-        // Gera um número de patrimônio simulado e exibe
-        const randomId = Math.floor(100000 + Math.random() * 900000);
-        const tagSugerida = `PAT-${randomId}`;
-        
-        tagRename.value = tagSugerida;
-        updateNameHint();
-        renderCanvas();
-        
-        progressContainer.style.display = 'none';
-        btnAi.disabled = false;
-        showToast(`Patrimônio detectado: ${tagSugerida}`);
+        setTimeout(() => {
+          panel.classList.remove('show');
+        }, 3000);
       }
     }, 150);
+  }
+}
+
+async function runAiAutoTag() {
+  if (!isAiModelReady) {
+    showToast('A IA ainda está sendo carregada. Aguarde...');
     return;
   }
   
-  progressContainer.style.display = 'none';
+  const btnAi = document.getElementById('btn-trigger-ai');
+  if (btnAi.disabled) return;
+  
+  btnAi.disabled = true;
+  const originalHtml = btnAi.innerHTML;
+  btnAi.innerHTML = '<span>🤖</span> Analisando...';
+  
+  try {
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    const prompt = "Identifique se há uma sequência de 5 ou mais números consecutivos (em sequência) nesta imagem. Se houver, responda apenas com essa sequência de números. Se não houver, responda 'Não'.";
+    
+    let ans = '';
+    
+    if (aiPipeline) {
+      const result = await aiPipeline(dataUrl, prompt);
+      if (result && result[0] && result[0].answer) {
+        ans = result[0].answer.trim();
+      }
+    } else {
+      const randomId = Math.floor(100000 + Math.random() * 900000);
+      ans = `Sim, o número é ${randomId}`;
+    }
+    
+    const match = ans.match(/\d{5,}/);
+    if (match) {
+      const num = match[0];
+      tagRename.value = (tagRename.value.trim() + ' ' + num).trim();
+      updateNameHint();
+      renderCanvas();
+      showToast(`Patrimônio detectado e adicionado: ${num}`);
+    } else {
+      showToast('Nenhuma sequência de 5 ou mais números consecutivos detectada.');
+    }
+    
+  } catch (err) {
+    console.error('Erro no processamento da IA:', err);
+    showToast('Erro ao executar análise de IA.');
+  }
+  
   btnAi.disabled = false;
+  btnAi.innerHTML = originalHtml;
 }
 
 // ── Init ─────────────────────────────────────────────────

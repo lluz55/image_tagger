@@ -130,7 +130,18 @@ export async function loadAiModel() {
     statusText.innerHTML = 'Iniciando download (ONNX - 225MB)... <span>0%</span>';
     warningText.style.display = 'block';
 
+    const originalFetch = window.fetch;
     try {
+      window.fetch = function(input, init) {
+        let url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input && input.url));
+        if (url && url.endsWith('embed_tokens.onnx_data')) {
+          const newUrl = url.replace('embed_tokens.onnx_data', 'embed_tokens_fp16.onnx_data');
+          console.log(`[Fetch Redirect] ${url} -> ${newUrl}`);
+          return originalFetch(newUrl, init);
+        }
+        return originalFetch(input, init);
+      };
+
       const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0');
       const { AutoModelForImageTextToText, AutoProcessor } = module;
       
@@ -175,6 +186,8 @@ export async function loadAiModel() {
     } catch (err) {
       console.error('Erro crítico ao carregar LiquidAI:', err);
       handleAiLoadFailure(panel, title, statusText, warningText, progressBar);
+    } finally {
+      window.fetch = originalFetch;
     }
   } else {
     // Carregamento alternativo: PaddleOCR-VL-1.6 GGUF

@@ -249,10 +249,18 @@ export function newPhoto() {
   nameInput.value = edited; 
   state.currentName = edited;
   
+  canvas.classList.remove('fullscreen-view');
   updateNameHint();
   screenPrev.style.display = 'none';
   screenCap.style.display  = 'flex';
   window.scrollTo(0, 0);
+}
+
+export function toggleFullscreen(element) {
+  element.classList.toggle('fullscreen-view');
+  if (element.classList.contains('fullscreen-view')) {
+    showToast('Toque na imagem para voltar');
+  }
 }
 
 // ── Teclas Enter para adicionar chips ────────────────────
@@ -279,6 +287,7 @@ window.changeAiModel = changeAiModel;
 window.runAiAutoTag = runAiAutoTag;
 window.minimizeAiPanel = minimizeAiPanel;
 window.resetCounter = resetCounter;
+window.toggleFullscreen = toggleFullscreen;
 
 // ── Evento de mudança global ─────────────────────────────
 window.addEventListener('app:change', () => {

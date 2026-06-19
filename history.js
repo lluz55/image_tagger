@@ -123,6 +123,7 @@ export function closePreviewModal() {
   modal.classList.remove('show');
   
   const img = document.getElementById('modal-image');
+  img.classList.remove('fullscreen-view');
   if (img.dataset.objectUrl) {
     URL.revokeObjectURL(img.dataset.objectUrl);
     img.dataset.objectUrl = '';

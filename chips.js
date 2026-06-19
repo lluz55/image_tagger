@@ -8,6 +8,17 @@ import { updateNameHint, renderCanvas } from './app.js';
 export function readPrefixes()     { return JSON.parse(localStorage.getItem(PREFIXES_KEY) || '[]'); }
 export function readActivePrefix() { return localStorage.getItem(ACTIVE_PREFIX_KEY) || ''; }
 
+export function detectPrefixInName(name) {
+  if (!name) return null;
+  const prefixes = readPrefixes();
+  for (const p of prefixes) {
+    if (name.startsWith(p + ' - ') || name === p) {
+      return p;
+    }
+  }
+  return null;
+}
+
 export function addPrefix(inputId) {
   const el = document.getElementById(inputId);
   const val = el.value.trim();

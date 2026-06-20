@@ -79,7 +79,13 @@
 
   <!-- ── Tela 2 ── -->
   <div id="screen-preview" class="screen">
-    <canvas id="canvas" onclick="toggleFullscreen(this)" title="Clique para ampliar"></canvas>
+    <div class="canvas-container">
+      <canvas id="canvas" onclick="toggleFullscreen(this)" title="Clique para ampliar"></canvas>
+      <div id="ai-inference-overlay" class="ai-inference-overlay">
+        <div class="ai-inference-loader"></div>
+        <div id="ai-inference-text" class="ai-inference-text">Iniciando análise...</div>
+      </div>
+    </div>
     
     <div class="section">
       <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">

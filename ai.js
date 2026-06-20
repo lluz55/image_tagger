@@ -265,6 +265,14 @@ export async function runAiAutoTag() {
   btnAi.disabled = true;
   const originalHtml = btnAi.innerHTML;
   btnAi.innerHTML = '<span>🤖</span> Lendo códigos...';
+
+  const overlay = document.getElementById('ai-inference-overlay');
+  const overlayText = document.getElementById('ai-inference-text');
+  
+  if (overlay) {
+    if (overlayText) overlayText.textContent = 'Processando imagem...';
+    overlay.classList.add('show');
+  }
   
   try {
     let tagFound = null;
@@ -272,6 +280,7 @@ export async function runAiAutoTag() {
     // ── PASSO 1: Tenta Ler Código de Barras / QR Code ──
     if (barcodeReader) {
       try {
+        if (overlayText) overlayText.textContent = 'Buscando códigos de barras / QR Code...';
         console.log('[Scanner] Tentando detectar código de barras/QR...');
         const result = await barcodeReader.decodeFromCanvasElement(canvas);
         const text = result.getText();
@@ -294,6 +303,7 @@ export async function runAiAutoTag() {
     if (!tagFound && lfmModel && lfmProcessor && RawImage) {
       btnAi.innerHTML = '<span>🤖</span> Lendo com IA...';
       console.log('[AI] Enviando imagem para LFM2.5 VL 450M...');
+      if (overlayText) overlayText.textContent = 'Preparando imagem para IA...';
       
       const rawImage = await RawImage.read(canvas);
       
@@ -302,9 +312,17 @@ export async function runAiAutoTag() {
         'What is the serial number?',
         'What is the tag number?'
       ];
+
+      const questionLabels = {
+        'What is the asset tag or number?': 'IA: Procurando número de patrimônio...',
+        'What is the serial number?': 'IA: Procurando número de série...',
+        'What is the tag number?': 'IA: Analisando outras etiquetas...'
+      };
       
       for (const question of questions) {
         try {
+          const label = questionLabels[question] || 'IA: Analisando imagem...';
+          if (overlayText) overlayText.textContent = label;
           console.log(`[AI] Perguntando: "${question}"`);
           
           const messages = [
@@ -350,5 +368,8 @@ export async function runAiAutoTag() {
   } finally {
     btnAi.disabled = false;
     btnAi.innerHTML = originalHtml;
+    if (overlay) {
+      overlay.classList.remove('show');
+    }
   }
 }

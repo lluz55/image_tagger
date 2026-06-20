@@ -16,7 +16,7 @@ import {
 } from './incrementer.js';
 import { 
   toggleAiMode, changeAiModel, runAiAutoTag, 
-  initAiMode, minimizeAiPanel
+  initAiMode, minimizeAiPanel, runBarcodeScanOnly
 } from './ai.js';
 import { 
   renderHistory, makeThumbnail, openPreviewModal, closePreviewModal, 
@@ -62,6 +62,7 @@ function onFileSelected(file) {
       screenCap.style.display  = 'none';
       screenPrev.style.display = 'flex';
       window.scrollTo(0, 0);
+      runBarcodeScanOnly(true);
     };
     img.src = e.target.result;
   };

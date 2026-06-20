@@ -369,3 +369,30 @@ export async function runAiAutoTag() {
     }
   }
 }
+
+export async function runBarcodeScanOnly(silent = true) {
+  if (!barcodeReader) {
+    if (!silent) showToast('Aguarde o carregamento do leitor de código de barras...');
+    return null;
+  }
+  
+  try {
+    const result = await barcodeReader.decodeFromCanvasElement(canvas);
+    const text = result.getText();
+    if (text) {
+      const match = text.match(/\d{5,}/);
+      if (match) {
+        const tagFound = match[0];
+        console.log('[Scanner Auto] Patrimônio encontrado via código de barras:', tagFound);
+        
+        tagRename.value = (tagRename.value.trim() + ' ' + tagFound).trim();
+        window.dispatchEvent(new CustomEvent('app:change'));
+        showToast(`Patrimônio detectado: ${tagFound}`);
+        return tagFound;
+      }
+    }
+  } catch (barcodeErr) {
+    console.log('[Scanner Auto] Nenhum código de barras/QR detectado automaticamente.');
+  }
+  return null;
+}

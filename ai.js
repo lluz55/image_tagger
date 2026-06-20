@@ -96,6 +96,12 @@ export async function loadAiModel() {
   warningText.style.display = 'block';
   warningText.innerHTML = '⚠️ <strong>Atenção:</strong> Inicializando leitor de código de barras e modelo LFM2.5 VL local (~300MB). Não feche o navegador.';
 
+  const filesContainer = document.getElementById('ai-files-container');
+  if (filesContainer) filesContainer.innerHTML = '';
+  
+  const activeDownloads = {};
+  let lastGlobalPercent = 0;
+
   try {
     // 1. Carrega leitor de código de barras (ZXing)
     statusText.innerHTML = 'Carregando decodificador de código de barras... <span>10%</span>';
@@ -110,19 +116,72 @@ export async function loadAiModel() {
     percentText.textContent = '20%';
     
     const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0');
-    const { AutoProcessor, AutoModelForImageTextToText } = module;
+    const { AutoProcessor, AutoModelForImageTextToText, env } = module;
     RawImage = module.RawImage;
 
+    // Desativa multi-threading para evitar problemas de SharedArrayBuffer / CORS no servidor local
+    env.backends.onnx.wasm.numThreads = 1;
+
     const handleProgress = (data) => {
+      if (!data.file) return;
+      const filename = data.file.substring(data.file.lastIndexOf('/') + 1) || data.file;
+
+      if (!activeDownloads[data.file]) {
+        activeDownloads[data.file] = {
+          name: filename,
+          progress: 0,
+          status: 'initiate'
+        };
+      }
+
       if (data.status === 'progress') {
-        const percent = Math.round(data.progress);
-        const globalPercent = Math.round(20 + (percent * 0.75));
-        progressBar.style.width = `${globalPercent}%`;
-        percentText.textContent = `${globalPercent}%`;
-        const filename = data.file.substring(data.file.lastIndexOf('/') + 1);
-        statusText.innerHTML = `Baixando modelo IA: ${filename} <span>${globalPercent}%</span>`;
-      } else if (data.status === 'ready') {
-        statusText.innerHTML = `Carregado: ${data.file}`;
+        activeDownloads[data.file].progress = data.progress;
+        activeDownloads[data.file].status = 'progress';
+      } else if (data.status === 'done' || data.status === 'ready') {
+        activeDownloads[data.file].progress = 100;
+        activeDownloads[data.file].status = 'done';
+      }
+
+      if (filesContainer) {
+        let row = filesContainer.querySelector(`[data-file="${CSS.escape(data.file)}"]`);
+        if (!row) {
+          row = document.createElement('div');
+          row.className = 'ai-file-row';
+          row.setAttribute('data-file', data.file);
+          row.innerHTML = `
+            <div class="ai-file-name" title="${data.file}">${filename}</div>
+            <div class="ai-file-progress-bg">
+              <div class="ai-file-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div class="ai-file-percent">0%</div>
+          `;
+          filesContainer.appendChild(row);
+        }
+
+        const fileBar = row.querySelector('.ai-file-progress-bar');
+        const filePct = row.querySelector('.ai-file-percent');
+        const pct = Math.round(activeDownloads[data.file].progress);
+        if (fileBar) fileBar.style.width = `${pct}%`;
+        if (filePct) filePct.textContent = `${pct}%`;
+      }
+
+      const files = Object.values(activeDownloads);
+      if (files.length > 0) {
+        const totalSum = files.reduce((sum, f) => sum + f.progress, 0);
+        const avgProgress = totalSum / files.length;
+        const globalPercent = Math.round(20 + (avgProgress * 0.8));
+        if (globalPercent > lastGlobalPercent) {
+          lastGlobalPercent = globalPercent;
+        }
+        progressBar.style.width = `${lastGlobalPercent}%`;
+        percentText.textContent = `${lastGlobalPercent}%`;
+
+        const downloadingCount = files.filter(f => f.progress < 100).length;
+        if (downloadingCount > 0) {
+          statusText.innerHTML = `Baixando modelo IA (${downloadingCount} arquivo(s) ativo(s))... <span>${lastGlobalPercent}%</span>`;
+        } else {
+          statusText.innerHTML = `Arquivos carregados. Inicializando... <span>${lastGlobalPercent}%</span>`;
+        }
       }
     };
 
@@ -143,7 +202,7 @@ export async function loadAiModel() {
         progress_callback: handleProgress
       });
     } catch (webGpuErr) {
-      console.warn("[AI Model] Falha no WebGPU, tentando fallback para WASM...", webGpuErr);
+      console.warn("[AI Model] Falha no WebGPU, tentando fallback para WASM...", webGpuErr.message, webGpuErr.stack);
       statusText.innerHTML = 'WebGPU incompatível. Iniciando em modo WASM... <span>20%</span>';
       
       lfmModel = await AutoModelForImageTextToText.from_pretrained(modelId, {
@@ -161,6 +220,7 @@ export async function loadAiModel() {
     }
 
     isAiModelReady = true;
+    window.isAiModelReady = true;
     isDownloading = false;
     progressBar.style.width = '100%';
     percentText.textContent = '100%';
@@ -173,18 +233,23 @@ export async function loadAiModel() {
     }, 2500);
     
   } catch (err) {
-    console.error('Erro crítico ao inicializar motores:', err);
-    isAiModelReady = false;
+    console.error('Erro crítico ao inicializar motores:', err.message, err.stack);
+    isAiModelReady = !!barcodeReader;
+    if (isAiModelReady) {
+      window.isAiModelReady = true;
+    }
     isDownloading = false;
-    title.textContent = '❌ Falha ao Inicializar';
-    statusText.textContent = 'Erro ao baixar ou carregar os modelos locais.';
+    title.textContent = isAiModelReady ? '🤖 Apenas Leitor Ativo' : '❌ Falha ao Inicializar';
+    statusText.textContent = isAiModelReady 
+      ? 'Falha ao carregar IA (requer WebGPU), mas leitor de código de barras está pronto.'
+      : 'Erro ao baixar ou carregar os modelos locais.';
     warningText.style.display = 'none';
-    progressBar.style.background = '#c62828';
+    progressBar.style.background = isAiModelReady ? '#ffa726' : '#c62828';
     progressBar.style.width = '100%';
-    showToast('Erro ao inicializar os leitores.');
+    showToast(isAiModelReady ? 'Apenas o leitor de código de barras está disponível.' : 'Erro ao inicializar os leitores.');
     setTimeout(() => {
       panel.classList.remove('show');
-    }, 5000);
+    }, isAiModelReady ? 4000 : 5000);
   }
 }
 

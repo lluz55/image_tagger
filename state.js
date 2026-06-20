@@ -22,7 +22,7 @@ export const screenCap     = document.getElementById('screen-capture');
 export const screenPrev    = document.getElementById('screen-preview');
 export const canvas        = document.getElementById('canvas');
 export const ctx           = canvas.getContext('2d');
-export const toast         = document.getElementById('toast');
+export const toast         = null;
 
 // Estado compartilhado
 export const state = {
@@ -33,9 +33,39 @@ export const state = {
 
 // Toast utilitário
 export function showToast(msg) {
-  toast.textContent = msg;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3000);
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toastItem = document.createElement('div');
+  toastItem.className = 'toast-item';
+  toastItem.textContent = msg;
+
+  const msgLower = msg.toLowerCase();
+  if (msgLower.includes('aviso') || msgLower.includes('não suporta') || msgLower.includes('incompatível') || msgLower.includes('atenção')) {
+    toastItem.style.background = '#e65100'; // Laranja escuro para aviso
+  } else if (msgLower.includes('erro') || msgLower.includes('falha') || msgLower.includes('cancelado')) {
+    toastItem.style.background = '#c62828'; // Vermelho escuro para erro / cancelado
+  }
+
+  container.appendChild(toastItem);
+
+  // Forçar reflow
+  toastItem.offsetHeight;
+  toastItem.classList.add('show');
+
+  setTimeout(() => {
+    toastItem.classList.remove('show');
+    toastItem.addEventListener('transitionend', () => {
+      toastItem.remove();
+      if (container.childElementCount === 0) {
+        container.remove();
+      }
+    });
+  }, 4000);
 }
 
 let activeDownloadUrl = null;

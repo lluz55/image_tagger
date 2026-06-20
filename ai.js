@@ -32,9 +32,14 @@ export function toggleAiMode() {
   writeAiMode(active);
   updateAiButtonVisibility();
   
-  if (active && !isAiModelReady) {
-    loadAiModel();
-  } else if (!active) {
+  if (active) {
+    if (!navigator.gpu) {
+      showToast('Aviso: Seu navegador não suporta WebGPU. A IA usará o processamento em CPU (WASM), o que será mais lento.');
+    }
+    if (!isAiModelReady) {
+      loadAiModel();
+    }
+  } else {
     const panel = document.getElementById('ai-download-panel');
     if (panel) panel.classList.remove('show');
   }
@@ -55,8 +60,13 @@ export function initAiMode() {
   if (chk) chk.checked = active;
   updateAiButtonVisibility();
   
-  if (active && !isAiModelReady) {
-    loadAiModel();
+  if (active) {
+    if (!navigator.gpu) {
+      showToast('Aviso: Seu navegador não suporta WebGPU. A IA usará o processamento em CPU (WASM), o que será mais lento.');
+    }
+    if (!isAiModelReady) {
+      loadAiModel();
+    }
   }
 }
 
@@ -289,9 +299,6 @@ export async function runAiAutoTag() {
           if (match) {
             tagFound = match[0];
             console.log('[Scanner] Patrimônio encontrado via código de barras:', tagFound);
-          } else if (text.trim()) {
-            tagFound = text.trim();
-            console.log('[Scanner] Tag textual encontrada via código de barras:', tagFound);
           }
         }
       } catch (barcodeErr) {
@@ -307,50 +314,35 @@ export async function runAiAutoTag() {
       
       const rawImage = await RawImage.read(canvas);
       
-      const questions = [
-        'What is the asset tag or number?',
-        'What is the serial number?',
-        'What is the tag number?'
-      ];
-
-      const questionLabels = {
-        'What is the asset tag or number?': 'IA: Procurando número de patrimônio...',
-        'What is the serial number?': 'IA: Procurando número de série...',
-        'What is the tag number?': 'IA: Analisando outras etiquetas...'
-      };
-      
-      for (const question of questions) {
-        try {
-          const label = questionLabels[question] || 'IA: Analisando imagem...';
-          if (overlayText) overlayText.textContent = label;
-          console.log(`[AI] Perguntando: "${question}"`);
-          
-          const messages = [
-            { role: 'user', content: `<image>\n${question}` }
-          ];
-          const prompt = lfmProcessor.apply_chat_template(messages, { add_generation_prompt: true });
-          const inputs = await lfmProcessor(rawImage, prompt, { add_special_tokens: false });
-          
-          const outputs = await lfmModel.generate({
-            ...inputs,
-            max_new_tokens: 64,
-            do_sample: false
-          });
-          
-          const promptLength = inputs.input_ids.dims[1];
-          const newTokens = Array.from(outputs.data).slice(promptLength);
-          const ans = lfmProcessor.batch_decode([newTokens], { skip_special_tokens: true })[0].trim();
-          
-          console.log(`[AI] Resposta para "${question}":`, ans);
-          
-          const match = ans.match(/\d{5,}/);
-          if (match) {
-            tagFound = match[0];
-            break;
-          }
-        } catch (vqaErr) {
-          console.warn(`[AI] Falha ao processar pergunta "${question}":`, vqaErr);
+      try {
+        if (overlayText) overlayText.textContent = 'IA: Procurando número de patrimônio...';
+        const question = 'Identify the asset tag number containing 5 or more digits in the image. If found, respond ONLY with the digits.';
+        console.log(`[AI] Perguntando: "${question}"`);
+        
+        const messages = [
+          { role: 'user', content: `<image>\n${question}` }
+        ];
+        const prompt = lfmProcessor.apply_chat_template(messages, { add_generation_prompt: true });
+        const inputs = await lfmProcessor(rawImage, prompt, { add_special_tokens: false });
+        
+        const outputs = await lfmModel.generate({
+          ...inputs,
+          max_new_tokens: 64,
+          do_sample: false
+        });
+        
+        const promptLength = inputs.input_ids.dims[1];
+        const newTokens = Array.from(outputs.data).slice(promptLength);
+        const ans = lfmProcessor.batch_decode([newTokens], { skip_special_tokens: true })[0].trim();
+        
+        console.log(`[AI] Resposta da IA:`, ans);
+        
+        const match = ans.match(/\d{5,}/);
+        if (match) {
+          tagFound = match[0];
         }
+      } catch (vqaErr) {
+        console.warn(`[AI] Falha ao processar pergunta da IA:`, vqaErr);
       }
     }
     

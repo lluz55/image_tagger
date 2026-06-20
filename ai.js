@@ -3,7 +3,9 @@ import { canvas, tagRename, showToast, state } from './state.js';
 
 const AI_MODE_KEY = 'img_tagger_ai_mode';
 
-let donutPipeline = null;
+let lfmModel = null;
+let lfmProcessor = null;
+let RawImage = null;
 let barcodeReader = null;
 export let isAiModelReady = false;
 export let isDownloading = false;
@@ -92,7 +94,7 @@ export async function loadAiModel() {
   title.textContent = '🤖 Inicializando Leitor / IA';
   statusText.innerHTML = 'Carregando motores de leitura... <span>0%</span>';
   warningText.style.display = 'block';
-  warningText.innerHTML = '⚠️ <strong>Atenção:</strong> Inicializando leitor de código de barras e modelo VQA local (~220MB). Não feche o navegador.';
+  warningText.innerHTML = '⚠️ <strong>Atenção:</strong> Inicializando leitor de código de barras e modelo LFM2.5 VL local (~300MB). Não feche o navegador.';
 
   try {
     // 1. Carrega leitor de código de barras (ZXing)
@@ -102,13 +104,14 @@ export async function loadAiModel() {
     const zxingModule = await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm');
     barcodeReader = new zxingModule.BrowserMultiFormatReader();
 
-    // 2. Carrega motor Donut VQA (Transformers.js)
-    statusText.innerHTML = 'Carregando modelo Donut DocVQA... <span>20%</span>';
+    // 2. Carrega motor LFM2.5 VL 450M (Transformers.js)
+    statusText.innerHTML = 'Carregando modelo LFM2.5 VL 450M... <span>20%</span>';
     progressBar.style.width = '20%';
     percentText.textContent = '20%';
     
     const module = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0');
-    const { pipeline } = module;
+    const { AutoProcessor, AutoModelForImageTextToText } = module;
+    RawImage = module.RawImage;
 
     const handleProgress = (data) => {
       if (data.status === 'progress') {
@@ -123,18 +126,32 @@ export async function loadAiModel() {
       }
     };
 
+    const modelId = 'LiquidAI/LFM2.5-VL-450M-ONNX';
+
     try {
-      console.log('[AI Model] Carregando Donut com WebGPU...');
-      donutPipeline = await pipeline('document-question-answering', 'Xenova/donut-base-finetuned-docvqa', {
+      console.log('[AI Model] Carregando LFM2.5 com WebGPU...');
+      lfmModel = await AutoModelForImageTextToText.from_pretrained(modelId, {
         device: 'webgpu',
+        dtype: {
+          vision_encoder: 'fp16',
+          embed_tokens: 'fp16',
+          decoder_model_merged: 'q4',
+        },
+        progress_callback: handleProgress
+      });
+      lfmProcessor = await AutoProcessor.from_pretrained(modelId, {
         progress_callback: handleProgress
       });
     } catch (webGpuErr) {
       console.warn("[AI Model] Falha no WebGPU, tentando fallback para WASM...", webGpuErr);
       statusText.innerHTML = 'WebGPU incompatível. Iniciando em modo WASM... <span>20%</span>';
       
-      donutPipeline = await pipeline('document-question-answering', 'Xenova/donut-base-finetuned-docvqa', {
+      lfmModel = await AutoModelForImageTextToText.from_pretrained(modelId, {
         device: 'wasm',
+        dtype: 'q4',
+        progress_callback: handleProgress
+      });
+      lfmProcessor = await AutoProcessor.from_pretrained(modelId, {
         progress_callback: handleProgress
       });
     }
@@ -144,7 +161,7 @@ export async function loadAiModel() {
     progressBar.style.width = '100%';
     percentText.textContent = '100%';
     title.textContent = '🤖 Leitores Prontos!';
-    statusText.textContent = 'Modelos de leitura e VQA carregados com sucesso.';
+    statusText.textContent = 'Modelos de leitura e LFM2.5 VL carregados com sucesso.';
     warningText.style.display = 'none';
     
     setTimeout(() => {
@@ -204,12 +221,12 @@ export async function runAiAutoTag() {
       }
     }
     
-    // ── PASSO 2: Fallback para Donut VQA ──
-    if (!tagFound && donutPipeline) {
+    // ── PASSO 2: Fallback para LFM2.5-VL ──
+    if (!tagFound && lfmModel && lfmProcessor && RawImage) {
       btnAi.innerHTML = '<span>🤖</span> Lendo com IA...';
-      console.log('[AI] Enviando imagem para Donut DocVQA...');
+      console.log('[AI] Enviando imagem para LFM2.5 VL 450M...');
       
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      const rawImage = await RawImage.read(canvas);
       
       const questions = [
         'What is the asset tag or number?',
@@ -220,16 +237,29 @@ export async function runAiAutoTag() {
       for (const question of questions) {
         try {
           console.log(`[AI] Perguntando: "${question}"`);
-          const result = await donutPipeline(dataUrl, question);
-          if (result && result[0] && result[0].answer) {
-            const ans = result[0].answer.trim();
-            console.log(`[AI] Resposta para "${question}":`, ans);
-            
-            const match = ans.match(/\d{5,}/);
-            if (match) {
-              tagFound = match[0];
-              break;
-            }
+          
+          const messages = [
+            { role: 'user', content: `<image>\n${question}` }
+          ];
+          const prompt = lfmProcessor.apply_chat_template(messages, { add_generation_prompt: true });
+          const inputs = await lfmProcessor(rawImage, prompt, { add_special_tokens: false });
+          
+          const outputs = await lfmModel.generate({
+            ...inputs,
+            max_new_tokens: 64,
+            do_sample: false
+          });
+          
+          const promptLength = inputs.input_ids.dims[1];
+          const newTokens = Array.from(outputs.data).slice(promptLength);
+          const ans = lfmProcessor.batch_decode([newTokens], { skip_special_tokens: true })[0].trim();
+          
+          console.log(`[AI] Resposta para "${question}":`, ans);
+          
+          const match = ans.match(/\d{5,}/);
+          if (match) {
+            tagFound = match[0];
+            break;
           }
         } catch (vqaErr) {
           console.warn(`[AI] Falha ao processar pergunta "${question}":`, vqaErr);

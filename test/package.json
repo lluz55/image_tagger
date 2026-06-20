@@ -1,0 +1,10 @@
+{
+  "name": "image-tagger-tests",
+  "version": "1.0.0",
+  "description": "Tests for Image Tagger static web app",
+  "main": "ui-test.js",
+  "type": "module",
+  "dependencies": {
+    "puppeteer-core": "^22.0.0"
+  }
+}

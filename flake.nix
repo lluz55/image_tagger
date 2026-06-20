@@ -17,7 +17,12 @@
         default = pkgs.mkShell {
           packages = with pkgs; [
             git
+            nodejs_20
+            chromium
           ];
+          shellHook = ''
+            export CHROME_PATH="${pkgs.chromium}/bin/chromium"
+          '';
         };
       });
     };

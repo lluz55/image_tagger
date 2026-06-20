@@ -148,7 +148,11 @@ export async function loadAiModel() {
       
       lfmModel = await AutoModelForImageTextToText.from_pretrained(modelId, {
         device: 'wasm',
-        dtype: 'q4',
+        dtype: {
+          vision_encoder: 'q4',
+          embed_tokens: 'fp16',
+          decoder_model_merged: 'q4',
+        },
         progress_callback: handleProgress
       });
       lfmProcessor = await AutoProcessor.from_pretrained(modelId, {

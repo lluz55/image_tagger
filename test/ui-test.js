@@ -53,18 +53,32 @@ async function run() {
   });
 
   page.on('console', async msg => {
-    const args = await Promise.all(msg.args().map(async arg => {
-      try {
-        const val = await arg.jsonValue();
-        if (val instanceof Error || (val && val.message)) {
-          return val.message + '\n' + (val.stack || '');
+    let text = '';
+    try {
+      const args = await Promise.all(msg.args().map(async arg => {
+        try {
+          const val = await arg.jsonValue();
+          if (val instanceof Error || (val && val.message)) {
+            return val.message + '\n' + (val.stack || '');
+          }
+          return typeof val === 'object' ? JSON.stringify(val) : String(val);
+        } catch {
+          return arg.toString();
         }
-        return typeof val === 'object' ? JSON.stringify(val) : String(val);
-      } catch {
-        return arg.toString();
-      }
-    }));
-    const text = args.join(' ');
+      }));
+      text = args.join(' ').trim();
+    } catch (e) {
+      // ignore
+    }
+
+    if (!text) {
+      text = msg.text().trim();
+    }
+
+    if (!text) {
+      return;
+    }
+
     console.log(`[Browser Console] [${msg.type()}] ${text}`);
     if (msg.type() === 'error' && !text.includes('favicon.ico') && !text.includes('Failed to load resource') && !text.includes('Erro crítico ao inicializar motores')) {
       consoleErrors.push(text);

@@ -34,7 +34,7 @@
       <label class="checkbox-container">
         <input type="checkbox" id="ai-mode-checkbox" onchange="toggleAiMode()">
         <span class="checkmark"></span>
-        Leitura de Código / IA (Patrimônio)
+        Leitura de Código / OCR (Patrimônio)
       </label>
     </div>
 
@@ -90,8 +90,8 @@
     <div class="section">
       <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
         <span class="rename-label" style="margin: 0;">Nome da tag</span>
-        <button id="btn-trigger-ai" class="btn-ai-action" style="display: none;" onclick="runAiAutoTag()" title="Extrair valores da imagem usando IA">
-          <span>🤖</span> Auto-Tag IA
+        <button id="btn-trigger-ai" class="btn-ai-action" style="display: none;" onclick="runAiAutoTag()" title="Ler código de barras ou número de patrimônio">
+          <span>🔍</span> Auto-Tag
         </button>
       </div>
       <input id="tag-rename" class="field" type="text" style="margin-top:8px"
@@ -167,18 +167,18 @@
     </div>
   </div>
 
-  <!-- Painel de Progresso da IA Local -->
+  <!-- Painel de carregamento dos leitores -->
   <div id="ai-download-panel" class="ai-download-panel">
     <div class="ai-panel-header">
-      <span class="ai-panel-title">🤖 Carregando Inteligência Artificial</span>
+      <span class="ai-panel-title">Carregando Leitores</span>
       <button class="ai-panel-minimize" onclick="minimizeAiPanel()">_</button>
     </div>
     <div class="ai-panel-body">
-      <p class="ai-warning-text">⚠️ <strong>Atenção:</strong> Não saia da página nem feche o navegador até que o download seja concluído para salvar o modelo localmente.</p>
+      <p class="ai-warning-text" style="display:none;"></p>
       <div class="ai-panel-progress-bg">
         <div id="ai-panel-progress-bar" class="ai-panel-progress-bar" style="width: 0%;"></div>
       </div>
-      <div class="ai-panel-status">Iniciando download... <span id="ai-panel-percent">0%</span></div>
+      <div class="ai-panel-status">Iniciando... <span id="ai-panel-percent">0%</span></div>
       <div id="ai-files-container" class="ai-files-container"></div>
     </div>
   </div>

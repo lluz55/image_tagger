@@ -1,5 +1,5 @@
 // ai.js
-import { canvas, tagRename, showToast, state } from './state.js';
+import { canvas, ctx, tagRename, showToast, state } from './state.js';
 
 const AI_MODE_KEY = 'img_tagger_ai_mode';
 
@@ -263,6 +263,143 @@ export async function loadAiModel() {
   }
 }
 
+async function rotateCanvasDegrees(degrees) {
+  if (degrees !== 90 && degrees !== 180 && degrees !== 270) return;
+  
+  const angle = (degrees * Math.PI) / 180;
+  const w = canvas.width;
+  const h = canvas.height;
+  
+  // Criar canvas temporário para guardar conteúdo original
+  const temp = document.createElement('canvas');
+  temp.width = w;
+  temp.height = h;
+  const tempCtx = temp.getContext('2d');
+  tempCtx.drawImage(canvas, 0, 0);
+  
+  // Redimensionar dimensões do canvas principal
+  if (degrees === 90 || degrees === 270) {
+    canvas.width = h;
+    canvas.height = w;
+  } else {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(angle);
+  ctx.drawImage(temp, -w / 2, -h / 2);
+  ctx.restore();
+  
+  // Criar novo objeto Image para atualizar o estado
+  const newImg = new Image();
+  await new Promise((resolve) => {
+    newImg.onload = resolve;
+    newImg.src = canvas.toDataURL('image/jpeg');
+  });
+  state.currentImg = newImg;
+}
+
+function detectAndCropROI(srcCanvas) {
+  const targetSize = 300;
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = targetSize;
+  tempCanvas.height = targetSize;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.drawImage(srcCanvas, 0, 0, targetSize, targetSize);
+  
+  const imgData = tempCtx.getImageData(0, 0, targetSize, targetSize);
+  const data = imgData.data;
+  
+  // Converter para tons de cinza e computar o gradiente horizontal (densidade de bordas verticais, ex: códigos de barra)
+  const grad = new Float32Array(targetSize * targetSize);
+  for (let y = 0; y < targetSize; y++) {
+    for (let x = 0; x < targetSize - 1; x++) {
+      const idx1 = (y * targetSize + x) * 4;
+      const idx2 = (y * targetSize + (x + 1)) * 4;
+      
+      const g1 = (data[idx1] + data[idx1+1] + data[idx1+2]) / 3;
+      const g2 = (data[idx2] + data[idx2+1] + data[idx2+2]) / 3;
+      
+      grad[y * targetSize + x] = Math.abs(g1 - g2);
+    }
+  }
+  
+  // Mapeamento de energia em uma grade 15x15
+  const gridSize = 15;
+  const cellSize = targetSize / gridSize;
+  const energy = [];
+  
+  let maxEnergy = 0;
+  let maxCell = { r: 0, c: 0 };
+  
+  for (let r = 0; r < gridSize; r++) {
+    energy[r] = [];
+    for (let c = 0; c < gridSize; c++) {
+      let cellEnergy = 0;
+      const startY = Math.floor(r * cellSize);
+      const endY = Math.floor((r + 1) * cellSize);
+      const startX = Math.floor(c * cellSize);
+      const endX = Math.floor((c + 1) * cellSize);
+      
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+          cellEnergy += grad[y * targetSize + x];
+        }
+      }
+      
+      energy[r][c] = cellEnergy;
+      if (cellEnergy > maxEnergy) {
+        maxEnergy = cellEnergy;
+        maxCell = { r, c };
+      }
+    }
+  }
+  
+  // Limiarizar células vizinhas para obter a região de interesse
+  const threshold = maxEnergy * 0.4;
+  let minR = maxCell.r, maxR = maxCell.r;
+  let minC = maxCell.c, maxC = maxCell.c;
+  
+  for (let r = 0; r < gridSize; r++) {
+    for (let c = 0; c < gridSize; c++) {
+      if (energy[r][c] > threshold) {
+        if (r < minR) minR = r;
+        if (r > maxR) maxR = r;
+        if (c < minC) minC = c;
+        if (c > maxC) maxC = c;
+      }
+    }
+  }
+  
+  const scaleX = srcCanvas.width / targetSize;
+  const scaleY = srcCanvas.height / targetSize;
+  
+  // Margem de segurança de 1 célula
+  const pad = 1;
+  const finalMinR = Math.max(0, minR - pad);
+  const finalMaxR = Math.min(gridSize - 1, maxR + pad);
+  const finalMinC = Math.max(0, minC - pad);
+  const finalMaxC = Math.min(gridSize - 1, maxC + pad);
+  
+  const x = finalMinC * cellSize * scaleX;
+  const y = finalMinR * cellSize * scaleY;
+  const w = (finalMaxC - finalMinC + 1) * cellSize * scaleX;
+  const h = (finalMaxR - finalMinR + 1) * cellSize * scaleY;
+  
+  // Cria canvas recortado
+  const croppedCanvas = document.createElement('canvas');
+  croppedCanvas.width = w;
+  croppedCanvas.height = h;
+  const croppedCtx = croppedCanvas.getContext('2d');
+  croppedCtx.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+  
+  console.log(`[AutoCrop] Recortou ROI de [${x}, ${y}] com tamanho [${w}x${h}]`);
+  return { croppedCanvas, x, y, w, h };
+}
+
 export async function runAiAutoTag() {
   if (!barcodeReader) {
     showToast('Aguarde o carregamento do leitor de código de barras...');
@@ -295,32 +432,97 @@ export async function runAiAutoTag() {
     if (container) container.style.display = 'none';
     if (chipsWrap) chipsWrap.innerHTML = '';
 
-    // ── PASSO 1: Tenta Ler Código de Barras / QR Code ──
+    const active = readAiMode();
+
+    // ── PASSO 0: Orientação de imagem via IA ──
+    if (active && isAiModelReady && lfmModel && lfmProcessor && RawImage) {
+      if (overlayText) overlayText.textContent = 'IA: Verificando orientação...';
+      const rawImgOri = await RawImage.read(canvas);
+      
+      try {
+        const orientationQuestion = "Examine the text/barcode in the image. Is it oriented horizontally and right-side up? If it is rotated, respond with the clockwise rotation angle in degrees (90, 180, or 270) to correct it. If it is already correct, respond with '0'. Respond ONLY with one of: '0', '90', '180', '270' and nothing else.";
+        const messages = [
+          { role: 'user', content: `<image>\n${orientationQuestion}` }
+        ];
+        const prompt = lfmProcessor.apply_chat_template(messages, { add_generation_prompt: true });
+        const inputs = await lfmProcessor(rawImgOri, prompt, { add_special_tokens: false });
+        
+        const outputs = await lfmModel.generate({
+          ...inputs,
+          max_new_tokens: 16,
+          do_sample: false
+        });
+        
+        const promptLength = inputs.input_ids.dims[1];
+        const newTokens = Array.from(outputs.data).slice(promptLength);
+        const ans = lfmProcessor.batch_decode([newTokens], { skip_special_tokens: true })[0].trim();
+        console.log(`[AutoTag] Resposta de orientação IA:`, ans);
+        
+        const matchRotation = ans.match(/90|180|270/);
+        if (matchRotation) {
+          const rotationDegrees = parseInt(matchRotation[0], 10);
+          console.log(`[AutoTag] Rotacionando imagem em ${rotationDegrees} graus...`);
+          if (overlayText) overlayText.textContent = `IA: Ajustando rotação (${rotationDegrees}°)...`;
+          await rotateCanvasDegrees(rotationDegrees);
+          window.dispatchEvent(new CustomEvent('app:change'));
+        }
+      } catch (oriErr) {
+        console.warn('[AutoTag] Erro ao detectar orientação via IA:', oriErr);
+      }
+    }
+
+    // ── PASSO 1: Tenta Ler Código de Barras / QR Code (com Zoom ROI) ──
+    let decodedBarcode = false;
+    let croppedInfo = null;
+    let croppedCanvas = null;
+
     try {
-      if (overlayText) overlayText.textContent = 'Buscando códigos de barras / QR Code...';
-      console.log('[AutoTag] Tentando detectar código de barras...');
-      const result = await barcodeReader.decodeFromCanvasElement(canvas);
+      console.log('[AutoTag] Analisando densidade de bordas para recorte (zoom)...');
+      croppedInfo = detectAndCropROI(canvas);
+      croppedCanvas = croppedInfo.croppedCanvas;
+
+      if (overlayText) overlayText.textContent = 'Buscando códigos de barras na área recortada...';
+      const result = await barcodeReader.decodeFromCanvasElement(croppedCanvas);
       const text = result.getText();
       if (text) {
         const match = text.match(/\d{5,}/);
         if (match) {
-          console.log('[AutoTag] Código de barras detectado:', match[0]);
+          console.log('[AutoTag] Código de barras detectado no crop:', match[0]);
           suggestions.push(match[0]);
+          decodedBarcode = true;
         }
       }
-    } catch (barcodeErr) {
-      console.log('[AutoTag] Nenhum código de barras/QR detectado.');
+    } catch (cropErr) {
+      console.log('[AutoTag] Sem códigos na área recortada. Tentando imagem completa...');
+    }
+
+    if (!decodedBarcode) {
+      try {
+        if (overlayText) overlayText.textContent = 'Buscando códigos de barras na imagem inteira...';
+        const result = await barcodeReader.decodeFromCanvasElement(canvas);
+        const text = result.getText();
+        if (text) {
+          const match = text.match(/\d{5,}/);
+          if (match) {
+            console.log('[AutoTag] Código de barras detectado na imagem completa:', match[0]);
+            suggestions.push(match[0]);
+          }
+        }
+      } catch (barcodeErr) {
+        console.log('[AutoTag] Nenhum código de barras/QR detectado.');
+      }
     }
     
     // ── PASSO 2: Fallback / Sequência para LFM2.5-VL ──
-    const active = readAiMode();
     if (active && isAiModelReady && lfmModel && lfmProcessor && RawImage) {
+      // Se tiver crop, usa para a IA ler também (melhora resolução do texto distante)
+      const targetCanvas = croppedCanvas || canvas;
       if (overlayText) overlayText.textContent = 'Preparando imagem para IA...';
-      const rawImage = await RawImage.read(canvas);
+      const rawImage = await RawImage.read(targetCanvas);
       
       try {
         if (overlayText) overlayText.textContent = 'IA: Analisando número de patrimônio...';
-        const question = 'Identify the asset tag number containing 5 or more digits in the image. Respond ONLY with the asset number and nothing else.';
+        const question = 'Identify the asset tag number containing 5 or more digits in the image. If there are no readable numbers or you are not confident, respond ONLY with "NONE". Respond ONLY with the asset number or "NONE" and nothing else.';
         console.log(`[AutoTag] Consultando IA: "${question}"`);
         
         const messages = [
@@ -331,7 +533,7 @@ export async function runAiAutoTag() {
         
         const outputs = await lfmModel.generate({
           ...inputs,
-          max_new_tokens: 64,
+          max_new_tokens: 32,
           do_sample: false
         });
         
@@ -341,10 +543,16 @@ export async function runAiAutoTag() {
         
         console.log(`[AutoTag] IA resposta:`, ans);
         
-        const match = ans.match(/\d{5,}/);
-        if (match) {
-          console.log('[AutoTag] Patrimônio detectado via IA:', match[0]);
-          suggestions.push(match[0]);
+        if (ans.toUpperCase().includes('NONE')) {
+          console.log('[AutoTag] IA indicou ausência ou baixa confiança de números ("NONE").');
+        } else {
+          const match = ans.match(/\b\d{5,}\b/);
+          if (match) {
+            console.log('[AutoTag] Patrimônio detectado via IA (Confiança alta):', match[0]);
+            suggestions.push(match[0]);
+          } else {
+            console.log('[AutoTag] Resposta da IA não corresponde ao formato esperado (Regex inválido):', ans);
+          }
         }
       } catch (vqaErr) {
         console.warn(`[AutoTag] Falha ao processar pergunta da IA:`, vqaErr);

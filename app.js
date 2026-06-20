@@ -16,7 +16,7 @@ import {
 } from './incrementer.js';
 import { 
   toggleAiMode, changeAiModel, runAiAutoTag, 
-  initAiMode, minimizeAiPanel, runBarcodeScanOnly
+  initAiMode, minimizeAiPanel
 } from './ai.js';
 import { 
   renderHistory, makeThumbnail, openPreviewModal, closePreviewModal, 
@@ -62,7 +62,13 @@ function onFileSelected(file) {
       screenCap.style.display  = 'none';
       screenPrev.style.display = 'flex';
       window.scrollTo(0, 0);
-      runBarcodeScanOnly(true);
+      // Limpa sugestões antigas do DOM antes de iniciar nova análise
+      const suggContainer = document.getElementById('ai-suggestions-container');
+      const suggChips = document.getElementById('ai-suggestions-chips');
+      if (suggContainer) suggContainer.style.display = 'none';
+      if (suggChips) suggChips.innerHTML = '';
+
+      runAiAutoTag();
     };
     img.src = e.target.result;
   };

@@ -270,11 +270,13 @@ export async function runAiAutoTag() {
   }
   
   const btnAi = document.getElementById('btn-trigger-ai');
-  if (btnAi.disabled) return;
-  
-  btnAi.disabled = true;
-  const originalHtml = btnAi.innerHTML;
-  btnAi.innerHTML = '<span>🤖</span> Lendo códigos...';
+  let originalHtml = '';
+  if (btnAi) {
+    if (btnAi.disabled) return;
+    btnAi.disabled = true;
+    originalHtml = btnAi.innerHTML;
+    btnAi.innerHTML = '<span>🤖</span> Analisando...';
+  }
 
   const overlay = document.getElementById('ai-inference-overlay');
   const overlayText = document.getElementById('ai-inference-text');
@@ -284,115 +286,143 @@ export async function runAiAutoTag() {
     overlay.classList.add('show');
   }
   
+  const suggestions = [];
+
   try {
-    let tagFound = null;
-    
+    // Limpa as sugestões anteriores no DOM
+    const container = document.getElementById('ai-suggestions-container');
+    const chipsWrap = document.getElementById('ai-suggestions-chips');
+    if (container) container.style.display = 'none';
+    if (chipsWrap) chipsWrap.innerHTML = '';
+
     // ── PASSO 1: Tenta Ler Código de Barras / QR Code ──
     try {
       if (overlayText) overlayText.textContent = 'Buscando códigos de barras / QR Code...';
-      console.log('[Scanner] Tentando detectar código de barras/QR...');
+      console.log('[AutoTag] Tentando detectar código de barras...');
       const result = await barcodeReader.decodeFromCanvasElement(canvas);
       const text = result.getText();
       if (text) {
         const match = text.match(/\d{5,}/);
         if (match) {
-          tagFound = match[0];
-          console.log('[Scanner] Patrimônio encontrado via código de barras:', tagFound);
+          console.log('[AutoTag] Código de barras detectado:', match[0]);
+          suggestions.push(match[0]);
         }
       }
     } catch (barcodeErr) {
-      console.log('[Scanner] Nenhum código de barras/QR detectado.');
+      console.log('[AutoTag] Nenhum código de barras/QR detectado.');
     }
     
-    // ── PASSO 2: Fallback para LFM2.5-VL ──
-    if (!tagFound) {
-      if (isAiModelReady && lfmModel && lfmProcessor && RawImage) {
-        btnAi.innerHTML = '<span>🤖</span> Lendo com IA...';
-        console.log('[AI] Enviando imagem para LFM2.5 VL 450M...');
-        if (overlayText) overlayText.textContent = 'Preparando imagem para IA...';
+    // ── PASSO 2: Fallback / Sequência para LFM2.5-VL ──
+    const active = readAiMode();
+    if (active && isAiModelReady && lfmModel && lfmProcessor && RawImage) {
+      if (overlayText) overlayText.textContent = 'Preparando imagem para IA...';
+      const rawImage = await RawImage.read(canvas);
+      
+      try {
+        if (overlayText) overlayText.textContent = 'IA: Analisando número de patrimônio...';
+        const question = 'Identify the asset tag number containing 5 or more digits in the image. Respond ONLY with the asset number and nothing else.';
+        console.log(`[AutoTag] Consultando IA: "${question}"`);
         
-        const rawImage = await RawImage.read(canvas);
+        const messages = [
+          { role: 'user', content: `<image>\n${question}` }
+        ];
+        const prompt = lfmProcessor.apply_chat_template(messages, { add_generation_prompt: true });
+        const inputs = await lfmProcessor(rawImage, prompt, { add_special_tokens: false });
         
-        try {
-          if (overlayText) overlayText.textContent = 'IA: Procurando número de patrimônio...';
-          const question = 'Identify the asset tag number containing 5 or more digits in the image. Respond ONLY with the asset number and nothing else.';
-          console.log(`[AI] Perguntando: "${question}"`);
-          
-          const messages = [
-            { role: 'user', content: `<image>\n${question}` }
-          ];
-          const prompt = lfmProcessor.apply_chat_template(messages, { add_generation_prompt: true });
-          const inputs = await lfmProcessor(rawImage, prompt, { add_special_tokens: false });
-          
-          const outputs = await lfmModel.generate({
-            ...inputs,
-            max_new_tokens: 64,
-            do_sample: false
-          });
-          
-          const promptLength = inputs.input_ids.dims[1];
-          const newTokens = Array.from(outputs.data).slice(promptLength);
-          const ans = lfmProcessor.batch_decode([newTokens], { skip_special_tokens: true })[0].trim();
-          
-          console.log(`[AI] Resposta da IA:`, ans);
-          
-          const match = ans.match(/\d{5,}/);
-          if (match) {
-            tagFound = match[0];
-          }
-        } catch (vqaErr) {
-          console.warn(`[AI] Falha ao processar pergunta da IA:`, vqaErr);
+        const outputs = await lfmModel.generate({
+          ...inputs,
+          max_new_tokens: 64,
+          do_sample: false
+        });
+        
+        const promptLength = inputs.input_ids.dims[1];
+        const newTokens = Array.from(outputs.data).slice(promptLength);
+        const ans = lfmProcessor.batch_decode([newTokens], { skip_special_tokens: true })[0].trim();
+        
+        console.log(`[AutoTag] IA resposta:`, ans);
+        
+        const match = ans.match(/\d{5,}/);
+        if (match) {
+          console.log('[AutoTag] Patrimônio detectado via IA:', match[0]);
+          suggestions.push(match[0]);
         }
-      } else if (isDownloading) {
-        showToast('Aviso: Código de barras não detectado. A IA ainda está carregando...');
+      } catch (vqaErr) {
+        console.warn(`[AutoTag] Falha ao processar pergunta da IA:`, vqaErr);
       }
+    } else if (active && isDownloading) {
+      showToast('Aviso: O modelo de IA ainda está carregando no fundo.');
     }
     
-    // ── PASSO 3: Aplica o resultado ──
-    if (tagFound) {
-      tagRename.value = (tagRename.value.trim() + ' ' + tagFound).trim();
-      window.dispatchEvent(new CustomEvent('app:change'));
-      showToast(`Patrimônio detectado: ${tagFound}`);
-    } else if (!isAiModelReady && isDownloading) {
-      // Já mostrou toast informando do download da IA
+    // ── PASSO 3: Processa as sugestões encontradas ──
+    const uniqueSuggestions = [...new Set(suggestions)];
+    renderSuggestions(uniqueSuggestions, true);
+
+    if (uniqueSuggestions.length > 0) {
+      showToast(`Análise concluída. ${uniqueSuggestions.length} patrimônio(s) sugerido(s).`);
     } else {
-      showToast('Nenhum código de barras ou número de patrimônio (5+ dígitos) detectado.');
+      showToast('Nenhum código de barras ou patrimônio detectado.');
     }
   } catch (err) {
     console.error('Erro na análise automática:', err);
     showToast('Erro ao executar análise.');
   } finally {
-    btnAi.disabled = false;
-    btnAi.innerHTML = originalHtml;
+    if (btnAi) {
+      btnAi.disabled = false;
+      btnAi.innerHTML = originalHtml;
+    }
     if (overlay) {
       overlay.classList.remove('show');
     }
   }
 }
 
-export async function runBarcodeScanOnly(silent = true) {
-  if (!barcodeReader) {
-    if (!silent) showToast('Aguarde o carregamento do leitor de código de barras...');
-    return null;
+export function renderSuggestions(suggestions, autoSelect = true) {
+  const container = document.getElementById('ai-suggestions-container');
+  const chipsWrap = document.getElementById('ai-suggestions-chips');
+  if (!container || !chipsWrap) return;
+
+  chipsWrap.innerHTML = '';
+  if (!suggestions || suggestions.length === 0) {
+    container.style.display = 'none';
+    return;
   }
+
+  container.style.display = 'block';
   
-  try {
-    const result = await barcodeReader.decodeFromCanvasElement(canvas);
-    const text = result.getText();
-    if (text) {
-      const match = text.match(/\d{5,}/);
-      if (match) {
-        const tagFound = match[0];
-        console.log('[Scanner Auto] Patrimônio encontrado via código de barras:', tagFound);
-        
-        tagRename.value = (tagRename.value.trim() + ' ' + tagFound).trim();
-        window.dispatchEvent(new CustomEvent('app:change'));
-        showToast(`Patrimônio detectado: ${tagFound}`);
-        return tagFound;
-      }
-    }
-  } catch (barcodeErr) {
-    console.log('[Scanner Auto] Nenhum código de barras/QR detectado automaticamente.');
+  suggestions.forEach(suggestion => {
+    const chip = document.createElement('div');
+    chip.className = 'suggestion-chip';
+    chip.dataset.value = suggestion;
+    chip.textContent = suggestion;
+    
+    chip.addEventListener('click', () => {
+      applySuggestion(suggestion);
+    });
+    
+    chipsWrap.appendChild(chip);
+  });
+
+  if (autoSelect && suggestions.length > 0) {
+    applySuggestion(suggestions[0]);
   }
-  return null;
+}
+
+export function applySuggestion(num) {
+  const current = tagRename.value.trim();
+  const match = current.match(/\b\d{5,}\b/);
+  if (match) {
+    tagRename.value = current.replace(match[0], num);
+  } else {
+    tagRename.value = (current + ' ' + num).trim();
+  }
+  window.dispatchEvent(new CustomEvent('app:change'));
+
+  const chips = document.querySelectorAll('#ai-suggestions-chips .suggestion-chip');
+  chips.forEach(c => {
+    if (c.dataset.value === num) {
+      c.classList.add('active');
+    } else {
+      c.classList.remove('active');
+    }
+  });
 }

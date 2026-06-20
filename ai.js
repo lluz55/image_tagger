@@ -387,6 +387,15 @@ export function renderSuggestions(suggestions, autoSelect = true) {
     return;
   }
 
+  // Só mostra em formato de chips se houver mais de uma sugestão
+  if (suggestions.length <= 1) {
+    container.style.display = 'none';
+    if (autoSelect && suggestions.length === 1) {
+      applySuggestion(suggestions[0]);
+    }
+    return;
+  }
+
   container.style.display = 'block';
   
   suggestions.forEach(suggestion => {
